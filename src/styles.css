@@ -1,0 +1,1145 @@
+/* 3x3 Dashboard grid styles */
+.dashboard-grid-3x3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  /* Use auto rows so tiles size by content and keep uniform gaps.
+     Keep a centered max-width so left/right spacing is equal. */
+  grid-auto-rows: minmax(120px, auto);
+  gap: 32px; /* unified horizontal + vertical gap between tiles */
+  max-width: 1100px;
+  margin: 24px auto 0; /* keep a top margin and center horizontally */
+  width: 100%;
+  justify-items: stretch;
+  align-items: stretch;
+  justify-content: center;
+}
+.dashboard-card {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 120px;
+  height: auto;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 56px 1fr; /* top band for title, bottom for value */
+  overflow: hidden;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.dashboard-label {
+  /* Title band (top full-width) */
+  grid-row: 1 / 2;
+  grid-column: 1 / -1;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  background: var(--kusgan-magenta);
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+.dashboard-value {
+  /* Value area (bottom full-width) */
+  grid-row: 2 / 3;
+  grid-column: 1 / -1;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 22px;
+  background: #ffffff;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* empty cells to control layout */
+.dashboard-card > .header-right { grid-area: header-right; }
+.dashboard-card > .left-bottom { grid-area: left-bottom; }
+
+/* Ensure tiles inside dashboard keep value color even if .magenta class is present */
+.dashboard-card .dashboard-value.magenta { color: var(--text) !important; }
+.dashboard-card-empty {
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/* Make tiles stack vertically on narrow screens */
+@media (max-width: 720px) {
+  .dashboard-grid-3x3 { grid-template-columns: repeat(1, 1fr); max-width: 100%; }
+  .dashboard-card {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "title"
+      "value";
+  }
+  .dashboard-label { grid-area: title; border-radius: 12px 12px 0 0; width: 100%; }
+  .dashboard-value { grid-area: value; border-radius: 0 0 12px 12px; width: 100%; }
+}
+/* Dashboard tile layout styles */
+.dashboard-content {
+  background: #f7f8fa;
+  min-height: 100vh;
+  padding: 32px 16px;
+}
+/* Center the dashboard grid */
+.dashboard-content {
+  background: #f7f8fa;
+  min-height: 100vh;
+  padding: 32px 16px;
+  display: block;
+}
+.dashboard-title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 36px;
+  color: #222;
+  text-align: left;
+}
+/* legacy dashboard styles removed — replaced by the new tile layout above */
+:root{
+  /* Brand */
+  --kusgan-magenta:#d81b8a;
+  --kusgan-magenta-100:#ffd6ec;
+  --kusgan-magenta-50:#fff0f6; /* much lighter pink for subtle headers */
+  --th-tint: rgba(216, 27, 138, 0.06); /* transparent pink tint for table headers */
+
+  /* Light theme */
+  --light-bg:#f6f7fb;
+  --light-surface:#ffffff;
+  --light-border:#e7e8ef;
+  --text:#14151a;
+  --muted:#5a5e6e;
+
+  /* Sidebar */
+  --sidebar-bg:#0b0b0e;
+  --sidebar-border:#1e1e25;
+  --sidebar-text:#e9e9ee;
+  --sidebar-muted:#b6b8c2;
+
+  /* =========================================
+     Kusgan Unified Buttons (global overrides)
+     ========================================= */
+  --btn-bg: var(--kusgan-magenta);
+  --btn-bg-600: #c11679;
+  --btn-bg-700: #a30e69;
+  --btn-text: #ffffff;
+  --btn-ring: 0 0 0 3px rgba(216,27,138,.28);
+
+  /* Standard button height used across the app */
+  --btn-height: 44px;
+
+  /* Attendance column percentages (must add to 100) */
+  --att-c1: 20; /* Staff Name */
+  --att-c2: 15; /* Date */
+  --att-c3: 10; /* Sign In */
+  --att-c4: 10; /* Sign Out */
+  --att-c5: 10; /* Total Hours */
+}
+
+/* ---------- Base ---------- */
+*{ box-sizing:border-box; }
+html,body,#root{ height:100%; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  background:var(--light-bg);
+  color:var(--text);
+}
+
+/* ---------- Layout ---------- */
+.app{
+  display:flex;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* Panel: reusable white card used across dashboard and pages */
+.panel{
+  background: var(--light-surface);
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+}
+.panel-header{
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+/* StaffAttendance: ensure the inline select + buttons match dashboard/button sizing */
+.panel .att-inline{ display:flex; align-items:center; gap:16px; justify-content:center; }
+.panel .att-inline-select{
+  min-width: 260px;    /* make the dropdown comfortably wide */
+  max-width: 420px;
+  height: 44px;        /* match logout/back button height */
+  padding: 8px 12px;
+  padding-right: 44px; /* room for custom arrow */
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--light-border);
+  background: #fff;
+  color: var(--text);
+  appearance: none;    /* hide native arrow so custom arrow is visible */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px 14px;
+}
+.panel .att-inline-select:focus{
+  outline: none;
+  box-shadow: var(--btn-ring);
+  border-color: var(--btn-bg-600);
+}
+.panel .att-inline-select::-ms-expand{ display: none; }
+
+/* Make the inline buttons visually match the nav logout/back buttons */
+.panel .att-inline-actions .primary-btn,
+.panel .att-inline-actions .back-btn{
+  background: var(--kusgan-magenta);
+  color: var(--btn-text);
+  border: none;
+  border-radius: 10px;
+  box-shadow: none;
+  height: 44px;
+  padding: 0 28px;
+  font-weight: 800;
+}
+.panel .att-inline-actions .primary-btn:disabled,
+.panel .att-inline-actions .back-btn:disabled{
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.panel .att-inline-actions .primary-btn,
+.panel .att-inline-actions .back-btn{
+  height: 44px;       /* ensure buttons align height-wise with the select */
+  padding: 0 28px;
+}
+
+/* Sidebar (fixed) */
+.sidebar{
+  position:fixed; inset:0 auto 0 0;
+  width:260px; background:var(--sidebar-bg);
+  border-right:1px solid var(--sidebar-border);
+  color:var(--sidebar-text);
+  padding:16px 12px;
+  overflow-y:auto;
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden; /* let links area scroll instead */
+}
+
+/* Make links area grow and scroll */
+.nav{
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* Footer with full‑width logout button */
+.sidebar-footer{
+  margin-top: auto;
+  padding: 12px;
+  border-top: 1px solid var(--sidebar-border);
+}
+.logout-btn{
+  width: 100%;
+  display: inline-block;      /* ensure height applies */
+}
+
+/* Right side (scrollable) */
+.main-content{
+  flex:1; margin-left:260px; height:100vh;
+  overflow-y:auto; padding:20px; background:var(--light-bg);
+}
+
+/* ---------- Sidebar content ---------- */
+.brand{
+  display:flex; align-items:center; justify-content:center;
+  padding:14px 8px 18px;
+  border-bottom:1px solid var(--sidebar-border);
+  margin-bottom:10px;
+}
+.brand-logo{
+  width:140px; max-width:100%; height:auto; display:block; object-fit:contain;
+}
+
+/* Date + Primary attendant (sidebar) */
+.sidebar-info{
+  color:var(--sidebar-muted); font-size:13px;
+  margin-top:10px; margin-bottom:20px; padding-top:8px;
+  border-top:1px solid var(--sidebar-border);
+}
+.sidebar-info .date-line{ margin:2px 0; }
+.sidebar-info .today{ font-weight:400; color:var(--sidebar-text); }
+.sidebar-info .weekday{ font-weight:800; color:var(--sidebar-text); }
+.sidebar-info .mdy{ font-weight:600; color:var(--sidebar-text); }
+.sidebar-info .label{ font-weight:400; color:var(--sidebar-text); display:block; margin-top:10px; }
+.sidebar-info .name{ font-weight:900; color:var(--sidebar-text); }
+
+/* Nav */
+.nav a{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px; margin:4px 0; border-radius:10px;
+  color:var(--sidebar-text); text-decoration:none;
+  transition:background .15s ease,color .15s ease;
+}
+.nav a:hover{ background:#14141a; }
+.nav a.active{ background:var(--kusgan-magenta-100); color:#54082f; font-weight:700; }
+
+/* ---------- Content wrappers ---------- */
+.content{ padding:18px; }
+
+/* Headings */
+.content h2{ font-size:24px; font-weight:800; margin-bottom:12px; }
+/* Ensure any h2 using dashboard-title inside the generic .content wrapper
+   matches the dashboard styling used on the Staff Attendance and Dashboard pages */
+.content h2.dashboard-title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 36px;
+  color: #222;
+  text-align: left;
+}
+h3{ margin-top:16px; }
+
+/* ---------- Tables ---------- */
+table{ width:100%; border-collapse:collapse; border:1px solid var(--light-border); }
+th,td{ padding:10px; border-bottom:1px solid var(--light-border); }
+td{ text-align:center; vertical-align:middle; }
+th{
+  text-align:center;
+  vertical-align:middle;
+  color:var(--muted);
+  font-weight:700;
+  background: var(--th-tint); /* transparent tint */
+}
+tbody tr{ transition:background .12s ease; }
+tbody tr:hover{ background:#f5f7ff; }
+tbody tr.row-link { cursor: pointer; }
+tbody tr.row-link:hover { background:#eef2ff; }
+
+/* Keep key tables aligned */
+table.aligned{ table-layout:fixed; margin-bottom:40px; }
+
+/* Utility: left-align full name cells in members table (row cells only) */
+.td-fullname{ text-align: left; }
+
+/* Highlight animation for optimistic updates */
+.optimistic-highlight { animation: optimistic-flash 2s ease; background: rgba(40,167,69,0.06); }
+@keyframes optimistic-flash {
+  0% { background: rgba(40,167,69,0.18); }
+  30% { background: rgba(40,167,69,0.12); }
+  60% { background: rgba(40,167,69,0.08); }
+  100% { background: transparent; }
+}
+
+/* Small spinner used inside action buttons */
+.spinner{
+  display:inline-block;
+  width:14px;
+  height:14px;
+  border:2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius:9999px;
+  animation: spin 800ms linear infinite;
+}
+@keyframes spin{ to { transform: rotate(360deg); } }
+
+/* Refresh badge used across pages for revalidation state */
+.refresh-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  background: var(--kusgan-magenta-50);
+  color: var(--kusgan-magenta);
+  font-weight:700;
+  font-size:0.95rem;
+  border: 1px solid var(--kusgan-magenta-100);
+  margin-left:10px;
+}
+.refresh-badge .refresh-spinner{
+  width:14px; height:14px; border-radius:9999px;
+  border:2px solid rgba(213,29,122,0.15);
+  border-top-color: var(--kusgan-magenta);
+  animation: spin 800ms linear infinite;
+}
+
+/* Payments table header styling */
+.payments-table thead th{ text-align:center; vertical-align:middle; }
+.payments-table thead th .th-sub{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  font-weight:600;
+  line-height:1.1;
+  margin-top:2px;
+}
+
+/* ---------- Buttons ---------- */
+.button{
+  background:var(--kusgan-magenta); color:#fff; border:none;
+  padding: 0 14px; border-radius:10px; font-weight:700; cursor:pointer;
+  height: var(--btn-height);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.0rem;
+}
+.button:hover{ opacity:.9; }
+
+/* Back + Track Progress (consistent size + spacing) */
+.back-btn,
+.progress-header button,
+.logout-btn {                 /* added .logout-btn */
+  font-size: 1.0rem;
+  height: var(--btn-height);
+  padding: 0 28px;
+  font-weight: 800;
+  border-radius: 10px;
+  background: var(--kusgan-magenta);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.back-btn:hover,
+.progress-header button:hover,
+.logout-btn:hover {           /* added .logout-btn */
+  opacity: 0.9;
+}
+.back-btn{ margin-bottom:20px; }
+
+/* Progress section header (button spacing) */
+.progress-header{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:10px 0 24px;
+}
+
+/* ---------- Status chips ---------- */
+.pill{
+  display:inline-block; padding:6px 10px; border-radius:999px;
+  font-size:15px; border:1px solid transparent; font-weight:800;
+}
+.pill.ok{ color:#2f9e44; border-color:#b7efc5; background:#e9f8ee; }
+.pill.bad{ color:#d64545; border-color:#f3b3b3; background:#fdecec; }
+
+/* Badges for student/senior */
+.pill.student { color:#1e66f5; border-color:#c7d2fe; background:#edf2ff; }
+.pill.senior  { color:#ad6800; border-color:#ffe1a8; background:#fff7e6; }
+
+/* Small status badge used in tables to mark open entries */
+.status-badge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-weight:800;
+  font-size:12px;
+  letter-spacing:0.6px;
+}
+.status-badge.on{ color:#166534; background:#e6f9ef; border:1px solid rgba(16,185,129,0.12); }
+
+/* ---------- Members toolbar ---------- */
+.toolbar{
+  display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:12px;
+}
+.toolbar .search-wide{
+  grid-column:span 4; height:44px; padding:10px 14px;
+  font-size:1.0rem; font-style:italic;
+}
+.toolbar .search-wide::placeholder{ color:#888; font-style:italic; }
+.toolbar .button{ height:44px; font-size:1.0rem; }
+
+/* Hide inner scrollbar for the virtualized members list while keeping scrolling functional. */
+.members-list-wrapper > div {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+.members-list-wrapper > div::-webkit-scrollbar {
+  width: 0px; height: 0px; display: none; /* Chrome, Safari */
+}
+
+/* ---------- Attendance toggle ---------- */
+.switch{ position:relative; display:inline-block; width:54px; height:30px; }
+.switch input{ display:none; }
+.slider{
+  position:absolute; inset:0; cursor:pointer; border-radius:999px;
+  background:#d9534f; border:1px solid var(--light-border); transition:.2s;
+}
+.slider:before{
+  content:""; position:absolute; left:3px; top:2px;
+  width:24px; height:24px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:.2s;
+}
+.switch.on .slider{ background:#2f9e44; }
+.switch.on .slider:before{ transform:translateX(24px); }
+
+/* Member card layout */
+.member-card{
+  display:flex; gap:16px; align-items:stretch;
+  background:#fff; border:1px solid var(--light-border, #e5e7eb);
+  border-radius:16px; padding:16px; box-shadow:0 10px 24px rgba(0,0,0,0.05);
+  /* Fill the content container so left/right padding matches tables below */
+  width: 100%;
+  margin: 0 auto 28px auto; /* center within content and add bottom spacing */
+  box-sizing: border-box;
+}
+.member-photo{ display:flex; align-items:flex-start; }
+.member-photo .photo-box{ width: 340px; max-width: 360px; aspect-ratio: 3 / 4; overflow:hidden; border-radius:16px; border:1px solid var(--light-border, #e5e7eb); background:#fafbff; }
+.member-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+.member-info{
+  /* Responsive right-side: allow to shrink to available space and avoid forcing horizontal scroll */
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+  display:flex; flex-direction:column;
+}
+
+/* ---------- Member Detail (6-col grid) ---------- */
+.member-grid{
+  display:grid; gap:10px;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-auto-rows:minmax(36px,auto); /* slightly taller rows to fill height */
+  margin-bottom:10px; /* symmetric spacing around status tiles */
+  flex:1 1 auto; /* expand to fill so actions can sit at bottom */
+}
+
+/* Photo 2 cols x 3 rows */
+/* cells auto-flow in the right column area */
+.member-grid .cell{ grid-column:auto !important; grid-row:auto !important; }
+/* removed external photo link */
+
+/* Right of photo rows */
+.member-grid .lastname   { grid-column:3 / span 2; grid-row:1; }
+.member-grid .firstname  { grid-column:4 / span 1; grid-row:1; }
+.member-grid .middlename { grid-column:5 / span 1; grid-row:1; }
+.member-grid .gender     { grid-column:3 / span 2; grid-row:2; }
+.member-grid .birthday   { grid-column:4 / span 1; grid-row:2; }
+.member-grid .age        { grid-column:5 / span 1; grid-row:2; }
+.member-grid .street     { grid-column:3 / span 2; grid-row:3; }
+.member-grid .brgy       { grid-column:4 / span 1; grid-row:3; }
+.member-grid .municipality{ grid-column:5 / span 1; grid-row:3; }
+
+/* Below photo */
+/* Unset legacy explicit placements below so they auto-flow */
+.member-grid .lastname,
+.member-grid .firstname,
+.member-grid .middlename,
+.member-grid .gender,
+.member-grid .birthday,
+.member-grid .age,
+.member-grid .street,
+.member-grid .brgy,
+.member-grid .municipality,
+.member-grid .nickname,
+.member-grid .mobile,
+.member-grid .email,
+.member-grid .memberSince,
+.member-grid .gym,
+.member-grid .coach{ grid-column:auto; grid-row:auto; }
+
+/* Labels + values */
+.member-grid .cell .label{
+  font-style: italic; /* match app-wide field labels */
+  text-transform:none; letter-spacing:0; /* no ALL CAPS */
+  color:var(--muted); margin-bottom:4px; font-size:14px;
+}
+.member-grid .cell .value{
+  font-weight:800; font-size:18px; line-height:1.25; /* slightly smaller per request */
+}
+
+/* Prevent long emails or URLs from overflowing the member card */
+.member-grid .cell.email .value{
+  white-space: normal; /* allow wrapping */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* Member actions row under the grid */
+.member-actions{
+  /* Keep all four buttons on one line (desktop) */
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px; /* uniform spacing between buttons */
+  margin: 0; /* rely on card padding for bottom spacing */
+  margin-top:auto; /* push actions to align with bottom of photo */
+}
+/* Buttons fill their grid cell; height matches back/logout (44px via .primary-btn/.back-btn) */
+.member-actions .primary-btn,
+.member-actions .button,
+.member-actions .back-btn{
+  width: 100%;
+  height: 44px;            /* ensure consistent height */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap; /* keep text on one line */
+}
+/* Responsive fallbacks for smaller screens */
+@media (max-width: 900px){
+  .member-actions{ grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px){
+  .member-actions{ grid-template-columns: 1fr; }
+}
+/* === FINAL: Back & Track Progress button styling === */
+.back-btn,
+.progress-header button,
+.logout-btn {                 /* added .logout-btn */
+  font-size: 1.0rem;
+  height: 44px;
+  padding: 0 28px;
+  font-weight: 800;
+  border-radius: 10px;
+  background: var(--kusgan-magenta);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.back-btn:hover,
+.progress-header button:hover,
+.logout-btn:hover {           /* added .logout-btn */
+  opacity: 0.9;
+}
+
+/* Sidebar footer keeps full‑width layout */
+.logout-btn{
+  width: 100%;
+  display: inline-block;      /* ensure height applies */
+}
+
+/* Add space below buttons to avoid “dikit” with tables/images */
+.back-btn {
+  display: inline-block;
+  margin-bottom: 28px;
+}
+
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;   /* keep items close together */
+  gap: 60px;                     /* space between “Progress” and button */
+  margin: 10px 0 32px;           /* keep bottom spacing */
+}
+
+/* --- Add Member form layout --- */
+.form-wide { max-width: 1100px; }
+.form-grid-2{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap:16px;
+}
+
+.field{ display:flex; flex-direction:column; }
+.field-span-2{ grid-column: span 2; }
+
+.field label{
+  font-size: 16px;          /* bigger labels */
+  font-style: italic;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.field input,
+.field select{
+  height: 46px;             /* taller inputs */
+  padding: 10px 12px;
+  font-size: 16px;          /* bigger text */
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+}
+
+/* Actions: same size as Back button */
+.form-actions{
+  display:flex; gap:12px;
+  margin-top: 16px;         /* space below form before tables */
+}
+.btn-lg{
+  font-size: 1.0rem;
+  height: 48px;
+  padding: 0 24px;
+  font-weight: 700;
+  border-radius: 10px;
+}
+/* --- Add Member: Photo capture section --- */
+.photo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.photo-label {
+  font-size: 18px;
+  font-style: italic;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.photo-preview,
+.photo-placeholder {
+  width: 200px;
+  height: 200px;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  object-fit: cover;
+  background: #fafbff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.photo-buttons {
+  display: flex;
+}
+/* Duplicate .dashboard-card block removed to prevent style conflicts with the tile layout above */
+/* Proper alignment + theme color for checkboxes */
+input[type="checkbox"] {
+  transform: scale(1.4);       /* smaller checkbox */
+  vertical-align: middle;
+  margin-right: 8px;
+  accent-color: var(--kusgan-magenta);
+  cursor: pointer;
+}
+label.checkbox-label {
+  display: flex;
+  align-items: center;
+  font-style: italic;
+  color: var(--muted);
+  gap: 6px;
+}
+
+/* Inline alignment: place Student checkbox on the same row level as the Birthday input */
+.bday-student-row{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto; /* row1: label, row2: input */
+  column-gap: 12px;
+  align-items: center; /* centers within each grid cell */
+}
+.bday-student-row .birthday-field{
+  grid-column: 1;
+  grid-row: 1 / span 2; /* span label + input */
+}
+.bday-student-row .student-inline{
+  grid-column: 2;
+  grid-row: 2;           /* align with the input row */
+  align-self: center;     /* vertically center with the input's height */
+  white-space: nowrap;
+}
+
+.camera-btn {
+  font-size: 1.0rem;
+  height: var(--btn-height);
+  padding: 0 28px;
+  font-weight: 800;
+  border-radius: 10px;
+  background: var(--kusgan-magenta);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+.camera-btn:hover {
+  opacity: 0.9;
+}
+/* === AddMember form layout fixes === */
+.form-wrap { max-width: 1200px; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+.field { display: flex; flex-direction: column; gap: 2px; }
+.field .label { font-style: italic; color: var(--muted); font-size: 14px; }
+
+.field input,
+.field select {
+  width: 100%;
+  height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 16px;
+}
+
+/* Compact form controls for small inline rows (e.g., Add Staff single-line) */
+.input-compact,
+.select-compact{
+  height: 36px;
+  padding: 6px 10px;
+  font-size: 14px;
+.border-radius-fix-placeholder: ;
+  border-radius: 8px;
+}
+.input-compact, .select-compact {
+  border: 1px solid var(--light-border);
+  background: #fff;
+  color: var(--text);
+}
+.input-compact:focus, .select-compact:focus {
+  outline: none;
+  border-color: var(--btn-bg-600);
+  box-shadow: var(--btn-ring);
+}
+.btn-compact{
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.camera-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.checkbox-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.checkbox-row input { transform: scale(1.4); accent-color: var(--kusgan-magenta); }
+
+.form-actions { display: flex; gap: 12px; margin-top: 16px; }
+
+/* Add Member: photo area */
+.photo-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;           /* keeps the cell tall enough */
+}
+.photo-preview {
+  width: 220px;
+  aspect-ratio: 3 / 4;   /* passport portrait */
+  height: auto;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--light-border, #e5e7eb);
+}
+.photo-placeholder {
+  width: 220px;
+  aspect-ratio: 3 / 4;   /* passport portrait */
+  border-radius: 12px;
+  border: 1px dashed var(--light-border, #e5e7eb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #6b7280);
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.10);
+  width: 220px;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+
+button[disabled], .button[disabled], .back-btn[disabled], .camera-btn[disabled], .primary-btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.field.error input, .field input[aria-invalid="true"] {
+  border-color: #ef4444 !important;
+  outline-color: #ef4444;
+}
+.small-error {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* Staff Attendance form layout */
+.att-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.att-left {
+  flex: 1 1 600px;       /* grow wide on large screens */
+  min-width: 420px;      /* keep it big even on medium screens */
+}
+.big-select {
+  width: 100%;
+  height: 44px;
+  font-size: 16px;
+  padding: 8px 12px;
+}
+.att-actions {
+  display: flex;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+.att-actions .primary-btn,
+.att-actions .back-btn {
+  height: 44px;
+  min-width: 140px;
+}
+
+/* Scoped stacked layout for Staff Attendance */
+.att-form{
+  display: grid;
+  justify-items: center;   /* center children */
+  gap: 12px;
+  width: 100%;
+}
+.att-form-select{
+  width: 100%;
+  max-width: 420px;        /* narrower dropdown */
+}
+.att-select-input{
+  width: 100%;
+  height: 44px;
+  font-size: 16px;
+  padding: 8px 12px;
+}
+.att-form-actions{
+  display: flex;
+  gap: 12px;
+  justify-content: center; /* center buttons under select */
+  width: 100%;
+  max-width: 420px;        /* same width as select for perfect alignment */
+}
+.att-form-actions .primary-btn,
+.att-form-actions .back-btn{
+  height: 44px;
+  min-width: 140px;
+}
+
+/* Optional: on small screens, allow full width */
+@media (max-width: 600px){
+  .att-form-select,
+  .att-form-actions{ max-width: 100%; }
+}
+
+/* Responsive collapse */
+@media (max-width: 900px){
+  .att-grid5{ grid-template-columns: 1fr; }
+  .att-controls, .att-actions{ grid-column: auto; }
+  .att-actions{ justify-content: flex-start; }
+}
+
+/* Disabled buttons look muted */
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Stacked attendance form */
+.att-form{
+  display: flex;
+  flex-direction: column;
+  align-items: center;   /* center children horizontally */
+  gap: 12px;
+}
+.att-select{
+  width: 100%;
+  max-width: 520px;      /* narrower dropdown */
+}
+.big-select{
+  width: 100%;
+  height: 44px;
+  font-size: 16px;
+  padding: 8px 12px;
+}
+.att-actions{
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+.att-actions-center{ justify-content: center; }
+.att-actions .primary-btn,
+.att-actions .back-btn{
+  height: 44px;
+  min-width: 140px;
+}
+
+/* Mobile: let select use full width */
+@media (max-width: 600px){
+  .att-select{ max-width: 100%; }
+}
+
+/* Unified primary button style (match .back-btn) */
+.primary-btn{
+  font-size: 1.0rem;
+  height: 44px;
+  padding: 0 28px;
+  font-weight: 800;
+  border-radius: 10px;
+  background: var(--kusgan-magenta);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+.primary-btn:hover{ opacity: 0.9; }
+
+/* Ensure disabled state matches */
+button[disabled],
+.button[disabled],
+.back-btn[disabled],
+.camera-btn[disabled],
+.primary-btn[disabled]{
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Attendance Records table width */
+.attendance-table{
+  width: min(1100px, 100%); /* or 100% for full width */
+  margin: 0;                /* left-align (no auto-centering) */
+}
+
+/* Column distribution stays controlled by these vars (not overall width):
+   :root --att-c1 .. --att-c5 (must total 100) */
+
+/* Staff Attendance: left-align form + table (override previous centering) */
+.att-form{
+  display: flex;           /* ensure flex wins over earlier grid */
+  flex-direction: column;
+  align-items: flex-start; /* left */
+  gap: 12px;
+  width: 100%;
+}
+.att-form-actions{
+  justify-content: flex-start; /* buttons align left under dropdown */
+  max-width: 420px;            /* match dropdown width; adjust if needed */
+}
+
+/* Attendance Records table left-aligned */
+.attendance-table{
+  width: min(1100px, 100%); /* or 100% for full width */
+  margin: 0;                /* left-align (no auto-centering) */
+}
+
+/* Staff Attendance: inline row (dropdown + buttons, left-aligned) */
+.att-inline{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;          /* wrap on small widths */
+}
+.att-inline-select{
+  width: 420px;             /* adjust width as needed */
+  max-width: 100%;
+  height: 44px;
+  padding: 8px 12px;
+  font-size: 16px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+}
+.att-inline-actions{
+  display: flex;
+  gap: 12px;
+}
+
+/* Stack nicely on small screens */
+@media (max-width: 640px){
+  .att-inline{ flex-direction: column; align-items: flex-start; }
+  .att-inline-actions{ width: 100%; }
+}
+
+/* Staff Attendance (inline row) — make heights equal and drop buttons slightly */
+.att-inline-select{
+  height: 48px;                 /* match button height */
+}
+
+.att-inline .primary-btn,
+.att-inline .back-btn{
+  height: 48px;                 /* match select height */
+}
+
+/* Small vertical nudge so the buttons sit a bit lower next to the select */
+.att-inline-actions{
+  margin-top: 4px;              /* tweak 2–6px to taste */
+}
+
+/* Optional: if the select still looks taller on macOS, align by baseline */
+@supports (align-items: baseline){
+  .att-inline{ align-items: baseline; }
+}
+
+.attendance-table th:last-child,
+.attendance-table td:last-child{
+  white-space: nowrap;   /* keep header/value on one line */
+}
+
+/* ---- Status tiles (Gym & Coach) ---- */
+.status-tiles{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin: 10px 0; }
+.status-tile{ border:1px solid var(--light-border); border-radius:14px; padding:16px; }
+.status-tile .title{ font-weight:800; font-size:18px; margin-bottom:8px; }
+.status-tile .label{ font-style: italic; font-size:14px; color: var(--muted); margin-top:4px; margin-bottom:2px; }
+.status-tile .value{ font-weight:800; font-size:18px; }
+.status-tile.active{ background:#e9f8ee; border-color:#b7efc5; }
+.status-tile.expired{ background:#fdecec; border-color:#f3b3b3; }
+.status-tile.none{ background:#f3f4f6; border-color:#e5e7eb; }
+
+/* On smaller screens, don't force actions to bottom so spacing above/below tiles is equal */
+@media (max-width: 900px){
+  .status-tiles{ grid-template-columns: 1fr; }
+  .member-actions{ margin-top: 16px; } /* override auto for symmetric spacing */
+}
+
+/* Member searchable picker */
+.member-picker{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.member-filter{
+  height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  font-size: 16px;
+}
+.member-picker select{
+  height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 16px;
+}
+
+/* Small screens: stack filter + select */
+@media (max-width: 700px){
+  .member-picker{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Width of your sidebar (adjust if yours is different) */
+:root { --sidebar-width: 232px; }
+
+/* App shell + content offset so content doesn't go under the sidebar */
+.app-shell { position: relative; min-height: 100vh; }
+.app-content { margin-left: var(--sidebar-width); padding: 16px; }
+
+/* On small screens, let content fill the width */
+@media (max-width: 768px) {
+  .app-content { margin-left: 0; }
+}

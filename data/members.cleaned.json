@@ -1,0 +1,223 @@
+{
+  "ok": true,
+  "cleanedCount": 36,
+  "anomaliesCount": 0,
+  "rows": [
+    {
+      "MemberID": "SHEEN251108",
+      "Nickname": "SHEEN",
+      "FirstName": "Sheena",
+      "LastName": "Herratina"
+    },
+    {
+      "MemberID": "IAMKUS251107",
+      "Nickname": "IAMKUSGAN",
+      "FirstName": "kusgan",
+      "LastName": "dili"
+    },
+    {
+      "MemberID": "JOHN94251011",
+      "Nickname": "JOHN94",
+      "FirstName": "John",
+      "LastName": "Lloyd Cruz"
+    },
+    {
+      "MemberID": "BEA62251027",
+      "Nickname": "BEA62",
+      "FirstName": "Bea",
+      "LastName": "Alonzo"
+    },
+    {
+      "MemberID": "PIOLO3250905",
+      "Nickname": "PIOLO30",
+      "FirstName": "Piolo",
+      "LastName": "Pascual"
+    },
+    {
+      "MemberID": "ENCHON251022",
+      "Nickname": "ENCHON82",
+      "FirstName": "Enchong",
+      "LastName": "Dee"
+    },
+    {
+      "MemberID": "LIZA49250907",
+      "Nickname": "LIZA49",
+      "FirstName": "Liza",
+      "LastName": "Soberano"
+    },
+    {
+      "MemberID": "NADINE251018",
+      "Nickname": "NADINE04",
+      "FirstName": "Nadine",
+      "LastName": "Lustre"
+    },
+    {
+      "MemberID": "GARY61251010",
+      "Nickname": "GARY61",
+      "FirstName": "Gary",
+      "LastName": "Valenciano"
+    },
+    {
+      "MemberID": "MARIAN251013",
+      "Nickname": "MARIAN34",
+      "FirstName": "Marian",
+      "LastName": "Rivera"
+    },
+    {
+      "MemberID": "DINGDO250908",
+      "Nickname": "DINGDO03",
+      "FirstName": "Dingdong",
+      "LastName": "Dantes"
+    },
+    {
+      "MemberID": "DANIEL250922",
+      "Nickname": "DANIEL18",
+      "FirstName": "Daniel",
+      "LastName": "Padilla"
+    },
+    {
+      "MemberID": "KATHRY250913",
+      "Nickname": "KATHRY19",
+      "FirstName": "Kathryn",
+      "LastName": "Bernardo"
+    },
+    {
+      "MemberID": "MAINE8251006",
+      "Nickname": "MAINE81",
+      "FirstName": "Maine",
+      "LastName": "Mendoza"
+    },
+    {
+      "MemberID": "ALDEN3250930",
+      "Nickname": "ALDEN39",
+      "FirstName": "Alden",
+      "LastName": "Richards"
+    },
+    {
+      "MemberID": "CATRIO250922",
+      "Nickname": "CATRIO06",
+      "FirstName": "Catriona",
+      "LastName": "Gray"
+    },
+    {
+      "MemberID": "PIA63251019",
+      "Nickname": "PIA63",
+      "FirstName": "Pia",
+      "LastName": "Wurtzbach"
+    },
+    {
+      "MemberID": "REGINE251102",
+      "Nickname": "REGINE30",
+      "FirstName": "Regine",
+      "LastName": "Velasquez"
+    },
+    {
+      "MemberID": "LEA56251002",
+      "Nickname": "LEA56",
+      "FirstName": "Lea",
+      "LastName": "Salonga"
+    },
+    {
+      "MemberID": "SARAH1251009",
+      "Nickname": "SARAH16",
+      "FirstName": "Sarah",
+      "LastName": "Geronimo"
+    },
+    {
+      "MemberID": "VICE75251009",
+      "Nickname": "VICE75",
+      "FirstName": "Vice",
+      "LastName": "Ganda"
+    },
+    {
+      "MemberID": "ANNE69251011",
+      "Nickname": "ANNE69",
+      "FirstName": "Anne",
+      "LastName": "Curtis"
+    },
+    {
+      "MemberID": "TESTI2511031",
+      "Nickname": "TESTINGINI",
+      "FirstName": "testing",
+      "LastName": "dnkdnl"
+    },
+    {
+      "MemberID": "TESTER251103",
+      "Nickname": "TESTER",
+      "FirstName": "fkdh",
+      "LastName": "dihdkn"
+    },
+    {
+      "MemberID": "NEWCOD251103",
+      "Nickname": "NEW CODE",
+      "FirstName": "Test",
+      "LastName": "MEMEMEMEME"
+    },
+    {
+      "MemberID": "CAPTUR251103",
+      "Nickname": "CAPTURE",
+      "FirstName": "Johanns",
+      "LastName": "Drivers"
+    },
+    {
+      "MemberID": "TYESO251103",
+      "Nickname": "TYESO",
+      "FirstName": "Water",
+      "LastName": "Coffee"
+    },
+    {
+      "MemberID": "TESTIN251103",
+      "Nickname": "TESTING",
+      "FirstName": "Juan",
+      "LastName": "Pedro"
+    },
+    {
+      "MemberID": "SAMPLE251103",
+      "Nickname": "SAMPLE2",
+      "FirstName": "test",
+      "LastName": "sampling"
+    },
+    {
+      "MemberID": "SAMPLE251102",
+      "Nickname": "sample",
+      "FirstName": "dela cruz",
+      "LastName": "juan"
+    },
+    {
+      "MemberID": "BASTABAST251",
+      "Nickname": "bastabast",
+      "FirstName": "pud ni",
+      "LastName": "testing na"
+    },
+    {
+      "MemberID": "AMBOT251102",
+      "Nickname": "ambot",
+      "FirstName": "Lang",
+      "LastName": "Testing"
+    },
+    {
+      "MemberID": "HOIHDF251102",
+      "Nickname": "hoihDF",
+      "FirstName": "fknkfbkd",
+      "LastName": "FJLDNLF"
+    },
+    {
+      "MemberID": "JOHA251102",
+      "Nickname": "Joha",
+      "FirstName": "Johanna Cass",
+      "LastName": "Licup"
+    },
+    {
+      "MemberID": 251102,
+      "Nickname": "",
+      "FirstName": "ambghfgfe",
+      "LastName": "fbfbgr"
+    },
+    {
+      "MemberID": "test",
+      "Nickname": "joh",
+      "FirstName": "johanna",
+      "LastName": "licp"
+    }
+  ]
+}

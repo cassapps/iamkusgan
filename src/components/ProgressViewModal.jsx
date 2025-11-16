@@ -1,0 +1,137 @@
+import React from "react";
+
+// Minimal helpers copied from MemberDetail
+const driveId = (u="") => {
+  const m = String(u||"").match(/(?:\/file\/d\/|[?&]id=|\/uc\?[^#]*id=)([^\/&#?]+)/);
+  return m && m[1] ? m[1] : "";
+};
+const driveThumb = (u="") => {
+  const s = String(u||"");
+  if (/googleusercontent\.com\//.test(s)) return s;
+  const id = driveId(s);
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : s;
+};
+
+const pick = (o, keys=[]) => {
+  if (!o) return "";
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(o, k)) return o[k];
+    const alt = Object.keys(o).find(kk => kk.toLowerCase().replace(/\s+/g, "") === k.toLowerCase().replace(/\s+/g, ""));
+    if (alt) return o[alt];
+  }
+  return "";
+};
+
+import ModalWrapper from "./ModalWrapper";
+
+export default function ProgressViewModal({ open, onClose, row, memberNick }){
+  if (!open) return null;
+  const r = row || {};
+  const memberId = pick(r, ["MemberID","memberid","member_id","id"]);
+  const dateRaw = pick(r, ["Date","date","recorded","log_date","timestamp"]);
+  const no = pick(r, ["No","no","entry_no","seq","number"]);
+  const weight = pick(r, ["Weight (kg)", "Weight(kg)", "WeightKg", "Weight (lbs)", "Weight(lbs)", "Weight","Weight_lbs","weight","weight_lbs","weight_(lbs)"]);
+  const bmi = pick(r, ["BMI","bmi"]);
+  const height = pick(r, ["Height (cm)", "Height(cm)", "HeightCm", "Height (inches)","Height(inches)","Height_in","height_in","height_inches"]);
+  const muscle = pick(r, ["MuscleMass","muscle_mass","muscle","Muscle"]);
+  const bodyfat = pick(r, ["BodyFat","body_fat","bf"]);
+  const visceral = pick(r, ["VisceralFat","visceral_fat"]);
+  const chest = pick(r, ["Chest"]);
+  const waist = pick(r, ["Waist"]);
+  const hips = pick(r, ["Hips"]);
+  const shoulders = pick(r, ["Shoulders"]);
+  const arms = pick(r, ["Arms"]);
+  const forearms = pick(r, ["Forearms"]);
+  const thighs = pick(r, ["Thighs"]);
+  const calves = pick(r, ["Calves"]);
+  const bp = pick(r, ["BloodPressure","blood_pressure"]);
+  const rhr = pick(r, ["RestingHeart Rate","RestingHeartRate","resting_heart_rate"]);
+  const comments = pick(r, ["Comments","comments","notes"]);
+  const p1 = pick(r, ["Photo1URL","Photo1","photo1","photo_url","photo"]);
+  const p2 = pick(r, ["Photo2URL","Photo2","photo2"]);
+  const p3 = pick(r, ["Photo3URL","Photo3","photo3"]);
+
+  return (
+  <ModalWrapper open={open} onClose={onClose} title="Progress Details" width={1000}>
+
+        {/* Top info row matching Progress entry: Member ID, Date, No. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 10 }}>
+            <span style={{ fontSize: 14, fontStyle: "italic", color: "var(--muted)", display: "block", marginBottom: 4 }}>Nickname</span>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>{memberNick || memberId || "-"}</div>
+          </div>
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 10 }}>
+            <span style={{ fontSize: 14, fontStyle: "italic", color: "var(--muted)", display: "block", marginBottom: 4 }}>Date</span>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>{formatPH(dateRaw) || "-"}</div>
+          </div>
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 10 }}>
+            <span style={{ fontSize: 14, fontStyle: "italic", color: "var(--muted)", display: "block", marginBottom: 4 }}>No.</span>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>{no || "-"}</div>
+          </div>
+        </div>
+
+        {/* Read-only boxes for all remaining fields (uniform scheme) */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12 }}>
+          {[
+            ["Weight (kg)", weight],["Height (cm)", height],["BMI", bmi],["Muscle Mass (%)", muscle],
+            ["Body Fat (%)", bodyfat],["Visceral Fat (%)", visceral],["Chest (cm)", chest],["Waist (cm)", waist],
+            ["Hips (cm)", hips],["Shoulders (cm)", shoulders],["Arms (cm)", arms],["Forearms (cm)", forearms],
+            ["Thighs (cm)", thighs],["Calves (cm)", calves],["Blood Pressure (mmHg)", bp],["Resting Heart Rate (bpm)", rhr],
+          ].map(([label, val]) => (
+            <div key={label} className="field">
+              <span className="label" style={{ display: "block", marginBottom: 6 }}>{label}</span>
+              <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, fontWeight: 700, fontSize: 18 }}>
+                {(!val || String(val).trim() === "0") ? "-" : String(val)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="field" style={{ marginTop: 12 }}>
+          <span className="label">Comments</span>
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, fontSize: 16, minHeight: 72 }}>
+            {comments ? String(comments) : "-"}
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:12, marginTop:12 }}>
+          {[p1,p2,p3].map((u, i) => (
+            <div key={i} style={{ position:"relative" }}>
+              <div style={{ position:"relative", width:"100%", height:0, paddingTop:"133.333%", borderRadius:8, border: u?"1px solid #e5e7eb":"1px dashed #e5e7eb", overflow:"hidden" }}>
+                {u ? (
+                  <img src={driveThumb(u)} alt={`Photo ${i+1}`} style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }} />
+                ) : (
+                  <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#999" }}>No photo</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+    </ModalWrapper>
+  );
+}
+
+// Format a Date, ISO string, or yyyy-mm-dd as "Mon-D, YYYY" in Asia/Manila
+const MANILA_TZ = "Asia/Manila";
+function formatPH(dOrYmd){
+  if (!dOrYmd) return "";
+  let date;
+  if (typeof dOrYmd === "string"){
+    // Accept ISO or yyyy-mm-dd
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dOrYmd)){
+      const [y,m,d] = dOrYmd.split("-").map(Number);
+      date = new Date(Date.UTC(y, m-1, d));
+    } else {
+      const parsed = new Date(dOrYmd);
+      if (!isNaN(parsed)) date = parsed;
+    }
+  } else if (dOrYmd instanceof Date) {
+    date = dOrYmd;
+  }
+  if (!date || isNaN(date)) return String(dOrYmd);
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: MANILA_TZ, month: "short", day: "numeric", year: "numeric" }).formatToParts(date);
+  const m = parts.find(p=>p.type==="month")?.value || "";
+  const day = parts.find(p=>p.type==="day")?.value || "";
+  const y = parts.find(p=>p.type==="year")?.value || "";
+  return `${m}-${day}, ${y}`;
+}
