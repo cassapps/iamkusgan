@@ -22,7 +22,28 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Allow an optional ADMIN_USERNAME/ADMIN_PASSWORD env pair so the deployer
+    // can set any username (e.g., `admin`) instead of being forced to use
+    // the literal `frontdesk` username. This mirrors the local /api server
+    // behavior and helps debugging on Vercel where env may be set per env.
+    const adminUsername = (process.env.ADMIN_USERNAME || '').trim();
+    const adminPassword = process.env.ADMIN_PASSWORD || '';
     const expected = process.env.FRONTDESK_PASSWORD || '';
+    // Debug visibility: log whether variables are present (not values). Use
+    // console.log to ensure the message appears in Vercel function logs.
+    try { console.log('auth/login env present:', { hasFrontdeskPassword: !!expected, hasAdminPair: !!(adminUsername && adminPassword), usernameAttempt: String(username).trim() }); } catch (e) {}
+
+    // If ADMIN_USERNAME/ADMIN_PASSWORD are set, prefer those
+    if (adminUsername && adminPassword) {
+      if (String(username).trim() === String(adminUsername) && String(password) === String(adminPassword)) {
+        const token = `local-token-${Date.now()}`;
+        const user = { username: adminUsername, role: 'staff', id: adminUsername };
+        res.status(200).json({ ok: true, token, user });
+        return;
+      }
+    }
+
+    // Otherwise keep the old frontdesk behavior
     // Only support the 'frontdesk' user for now
     if (String(username).trim() === 'frontdesk' && String(password) === String(expected)) {
       // Simple token — not a JWT. Sufficient for client session identification.
