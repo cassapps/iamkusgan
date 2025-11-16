@@ -3,7 +3,11 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/kusgan-frontend/", // dev and build base path
+  // Allow overriding base path via environment (useful for hosting on Vercel).
+  // Default to '/' for typical deployments; the previous hardcoded value
+  // pointed to '/kusgan-frontend/' for GitHub Pages which breaks asset paths
+  // when serving from root on other hosts.
+  base: process.env.VITE_BASE || '/',
   server: {
     proxy: {
       // Proxy auth and API calls to local API server during development
