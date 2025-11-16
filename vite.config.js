@@ -7,7 +7,7 @@ export default defineConfig({
   // Default to '/' for typical deployments; the previous hardcoded value
   // pointed to '/kusgan-frontend/' for GitHub Pages which breaks asset paths
   // when serving from root on other hosts.
-  base: process.env.VITE_BASE || '/',
+  base: process.env.VITE_BASE || '/Kusgan/',
   server: {
     proxy: {
       // Proxy auth and API calls to local API server during development
