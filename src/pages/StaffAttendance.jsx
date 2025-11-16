@@ -106,9 +106,22 @@ export default function StaffAttendance() {
       if (cached && cached.length) setRows(cached);
 
       // then fetch fresh server state and update cache
-      const res = await fetch('/attendance');
-      const json = await res.json();
-      const serverRows = Array.isArray(json) ? json : [];
+      // On static/public builds there is no server /attendance endpoint — use client API instead
+      let serverRows = [];
+      try {
+        if (api && typeof api.fetchAttendance === 'function') {
+          const ar = await api.fetchAttendance();
+          serverRows = (ar && (ar.rows || ar.data)) ? (ar.rows || ar.data) : (Array.isArray(ar) ? ar : []);
+        } else {
+          // fallback to legacy endpoint if present
+          const res = await fetch('/attendance');
+          const json = await res.json();
+          serverRows = Array.isArray(json) ? json : [];
+        }
+      } catch (e) {
+        console.warn('fetch attendance failed', e && e.message);
+        serverRows = [];
+      }
       setRows(serverRows);
       localCache.setCached('attendance', serverRows);
       // also fetch members so we can show nicknames in coaching sessions
@@ -201,9 +214,11 @@ export default function StaffAttendance() {
   useEffect(() => {
     try {
       if (!gymVisits || gymVisits.length === 0) {
-        // fallback: generate recent periods for usability
+        // fallback: start periods from Nov 16, 2025 and exclude earlier empty periods
         const now = new Date();
-        const ps = generateHalfMonthPeriodsBetween(new Date(now.getFullYear(), now.getMonth() - 3, 1), now);
+        const cutoff = '2025-11-16';
+        const psAll = generateHalfMonthPeriodsBetween(new Date(2025, 10, 16), now);
+        const ps = psAll.filter(p => (p.end >= cutoff));
         setPeriods(ps);
         const today = todayYMDManila;
         const idx = ps.findIndex(p => (p.start <= today && p.end >= today));
@@ -221,7 +236,10 @@ export default function StaffAttendance() {
       }
       const now = new Date();
       const start = minDate || new Date(now.getFullYear(), now.getMonth(), 1);
-      const ps = generateHalfMonthPeriodsBetween(start, now);
+      const psAll = generateHalfMonthPeriodsBetween(start, now);
+      // remove any periods that end before Nov 16, 2025 (these are empty historical periods)
+      const cutoff = '2025-11-16';
+      const ps = psAll.filter(p => (p.end >= cutoff));
       setPeriods(ps);
       const today = todayYMDManila;
       const idx = ps.findIndex(p => (p.start <= today && p.end >= today));
@@ -273,36 +291,76 @@ export default function StaffAttendance() {
   const onClock = async () => {
     if (!selected) return;
     setBusy(true); setError('');
+    // refresh attendance state to ensure sign-in status is accurate
     try {
-      // Optimistic local update (so UI is instant)
-      const opt = localCache.addOptimisticAttendance(selected);
-      setRows(prev => {
-        const filtered = (prev || []).filter(r => String(r.id) !== String(opt.id));
-        return [opt, ...filtered];
-      });
+      await load();
+    } catch (e) {
+      // ignore load failures here; we'll still attempt the action
+    }
+    try {
+      const currentlySignedIn = isSignedInToday(selected);
 
-      // Write using the same client helper pattern as gym entries so writes persist
-      // to Firestore when configured (same behavior as gymQuickAppend).
-      try {
-        if (api && typeof api.attendanceQuickAppend === 'function') {
-          await api.attendanceQuickAppend(selected, {});
-        } else if (api && typeof api.clockIn === 'function') {
-          // fallback: clockIn helper
-          await api.clockIn(selected);
-        } else {
-          // As a final fallback, enqueue the legacy /attendance/kiosk request
+      if (!currentlySignedIn) {
+        // Sign in flow (existing behavior)
+        const opt = localCache.addOptimisticAttendance(selected);
+        setRows(prev => {
+          const filtered = (prev || []).filter(r => String(r.id) !== String(opt.id));
+          return [opt, ...filtered];
+        });
+
+        try {
+          if (api && typeof api.attendanceQuickAppend === 'function') {
+            await api.attendanceQuickAppend(selected, {});
+          } else if (api && typeof api.clockIn === 'function') {
+            await api.clockIn(selected);
+          } else {
+            localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
+            await localCache.processQueue();
+          }
+        } catch (err) {
+          console.warn('attendance client write failed, falling back to queue', err && err.message);
           localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
           await localCache.processQueue();
         }
-      } catch (err) {
-        // If client-side write fails, fallback to enqueueing the legacy kiosk POST
-        console.warn('attendance client write failed, falling back to queue', err && err.message);
-        localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
-        await localCache.processQueue();
-      }
+        // Refresh authoritative list
+        await load();
+      } else {
+        // Sign out flow: optimistic update first (set TimeOut on today's open entry), then call clockOut
+        const nowIso = new Date().toISOString();
+        setRows(prev => {
+          if (!prev) return prev;
+          const updated = (prev || []).map(r => {
+            try {
+              const staff = String(r?.Staff || r?.staff || r?.staff_name || '').trim();
+              const dateStr = rowDateYMD(r) || '';
+              const today = todayYMDManila;
+              const to = String(r?.TimeOut || r?.time_out || r?.timeout || '').trim();
+              if (staff === String(selected).trim() && dateStr === today && (!to || to === '-' || to === '—')) {
+                return { ...r, TimeOut: nowIso };
+              }
+            } catch (e) { /* ignore */ }
+            return r;
+          });
+          return updated;
+        });
 
-      // Refresh authoritative list (Firestone or server) so UI reflects final persisted rows
-      await load();
+        try {
+          if (api && typeof api.clockOut === 'function') {
+            await api.clockOut(selected);
+          } else {
+            // Fallback: enqueue a clockout-like request so it can be retried when online
+            localCache.enqueueWrite({ method: 'POST', path: '/attendance/clockout', body: { staff_name: selected }, collection: 'attendance' });
+            await localCache.processQueue();
+          }
+        } catch (err) {
+          console.warn('attendance clockOut failed, falling back to queue', err && err.message);
+          localCache.enqueueWrite({ method: 'POST', path: '/attendance/clockout', body: { staff_name: selected }, collection: 'attendance' });
+          await localCache.processQueue();
+        }
+
+        // Refresh authoritative list so UI shows the persisted TimeOut
+        await load();
+      }
     } catch (e) {
       console.error('kiosk error', e);
       setError(e?.message || 'Action failed');

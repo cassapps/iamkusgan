@@ -37,6 +37,19 @@ export default function Login({ setToken }) {
         body: JSON.stringify({ username, password })
       });
       if (!res.ok) {
+        // Try static fallback for GitHub Pages / static hosting.
+        // If server rejects or is unavailable, allow a client-side fallback
+        // for the single `frontdesk` user with known password.
+        const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
+        if (fallbackOk) {
+          const token = `local-token-${Date.now()}`;
+          try { apiClient.setToken(token); } catch (e) {}
+          setToken(token);
+          try { console.log('Login: used client-side fallback for frontdesk'); } catch (e) {}
+          try { navigate('/'); } catch (e) {}
+          setLoading(false);
+          return;
+        }
         const json = await res.json().catch(() => ({}));
         setError(json.error || 'Invalid username or password');
         setLoading(false);
@@ -54,6 +67,17 @@ export default function Login({ setToken }) {
         setError('Login failed');
       }
     } catch (err) {
+      // Network or server error: try client-side fallback for frontdesk
+      const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
+      if (fallbackOk) {
+        const token = `local-token-${Date.now()}`;
+        try { apiClient.setToken(token); } catch (e) {}
+        setToken(token);
+        try { console.log('Login: used client-side fallback for frontdesk (network error)'); } catch (e) {}
+        try { navigate('/'); } catch (e) {}
+        setLoading(false);
+        return;
+      }
       setError('Server error — please try again');
     } finally {
       setLoading(false);
@@ -156,8 +180,17 @@ export default function Login({ setToken }) {
           {/* Member sign-in (below staff) */}
           <div style={{ marginTop: 18, width: '100%', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#c9c9da', fontWeight: 600, marginBottom: 8 }}>Sign in as Member</div>
+            {/* Google sign-in intentionally hidden for public static build */}
             <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <button onClick={handleGoogleSignIn} style={{ borderRadius: 8, padding: '8px 12px', background: '#fff', color: '#222', cursor: 'pointer' }}>Sign in with Google</button>
+              <button disabled style={{ borderRadius: 8, padding: '8px 12px', background: '#fff', color: '#888', cursor: 'not-allowed', border: '1px solid #ddd', display: 'inline-flex', alignItems: 'center', gap: 10 }} aria-disabled>
+                <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden focusable="false">
+                  <path fill="#4285F4" d="M24 9.5c3.9 0 7.2 1.4 9.6 3.7l7-7C36.4 2.4 30.6 0 24 0 14.8 0 6.9 5.5 3 13.4l8 6.2C13.5 13 18 9.5 24 9.5z"/>
+                  <path fill="#34A853" d="M46.5 24c0-1.4-.1-2.7-.4-4H24v8h12.7c-.5 2.8-2 5.1-4.3 6.7l6.7 5.2C43.9 36.5 46.5 30.6 46.5 24z"/>
+                  <path fill="#FBBC05" d="M11 29.6c-1.2-3.5-1.2-7.3 0-10.8L3 12.6C1.1 15.9 0 19.8 0 24s1.1 8.1 3 11.4l8-6.2z"/>
+                  <path fill="#EA4335" d="M24 48c6.6 0 12.4-2.4 16.9-6.5l-6.7-5.2c-2.3 1.5-5 2.4-10.2 2.4-6 0-10.5-3.5-12.4-8.6l-8 6.2C6.9 42.5 14.8 48 24 48z"/>
+                </svg>
+                <span style={{ fontWeight: 700, color: '#6b6b6b' }}>Sign in with Google</span>
+              </button>
             </div>
             <div style={{ marginTop: 8, color: '#8b8b9b', fontSize: 13 }}>Member login via Google is not yet enabled.</div>
           </div>
