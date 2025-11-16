@@ -37,6 +37,19 @@ export default function Login({ setToken }) {
         body: JSON.stringify({ username, password })
       });
       if (!res.ok) {
+        // Try static fallback for GitHub Pages / static hosting.
+        // If server rejects or is unavailable, allow a client-side fallback
+        // for the single `frontdesk` user with known password.
+        const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
+        if (fallbackOk) {
+          const token = `local-token-${Date.now()}`;
+          try { apiClient.setToken(token); } catch (e) {}
+          setToken(token);
+          try { console.log('Login: used client-side fallback for frontdesk'); } catch (e) {}
+          try { navigate('/'); } catch (e) {}
+          setLoading(false);
+          return;
+        }
         const json = await res.json().catch(() => ({}));
         setError(json.error || 'Invalid username or password');
         setLoading(false);
@@ -54,6 +67,17 @@ export default function Login({ setToken }) {
         setError('Login failed');
       }
     } catch (err) {
+      // Network or server error: try client-side fallback for frontdesk
+      const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
+      if (fallbackOk) {
+        const token = `local-token-${Date.now()}`;
+        try { apiClient.setToken(token); } catch (e) {}
+        setToken(token);
+        try { console.log('Login: used client-side fallback for frontdesk (network error)'); } catch (e) {}
+        try { navigate('/'); } catch (e) {}
+        setLoading(false);
+        return;
+      }
       setError('Server error — please try again');
     } finally {
       setLoading(false);
