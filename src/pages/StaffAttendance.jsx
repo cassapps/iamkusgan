@@ -106,9 +106,22 @@ export default function StaffAttendance() {
       if (cached && cached.length) setRows(cached);
 
       // then fetch fresh server state and update cache
-      const res = await fetch('/attendance');
-      const json = await res.json();
-      const serverRows = Array.isArray(json) ? json : [];
+      // On static/public builds there is no server /attendance endpoint — use client API instead
+      let serverRows = [];
+      try {
+        if (api && typeof api.fetchAttendance === 'function') {
+          const ar = await api.fetchAttendance();
+          serverRows = (ar && (ar.rows || ar.data)) ? (ar.rows || ar.data) : (Array.isArray(ar) ? ar : []);
+        } else {
+          // fallback to legacy endpoint if present
+          const res = await fetch('/attendance');
+          const json = await res.json();
+          serverRows = Array.isArray(json) ? json : [];
+        }
+      } catch (e) {
+        console.warn('fetch attendance failed', e && e.message);
+        serverRows = [];
+      }
       setRows(serverRows);
       localCache.setCached('attendance', serverRows);
       // also fetch members so we can show nicknames in coaching sessions
@@ -201,9 +214,11 @@ export default function StaffAttendance() {
   useEffect(() => {
     try {
       if (!gymVisits || gymVisits.length === 0) {
-        // fallback: generate recent periods for usability
+        // fallback: start periods from Nov 16, 2025 and exclude earlier empty periods
         const now = new Date();
-        const ps = generateHalfMonthPeriodsBetween(new Date(now.getFullYear(), now.getMonth() - 3, 1), now);
+        const cutoff = '2025-11-16';
+        const psAll = generateHalfMonthPeriodsBetween(new Date(2025, 10, 16), now);
+        const ps = psAll.filter(p => (p.end >= cutoff));
         setPeriods(ps);
         const today = todayYMDManila;
         const idx = ps.findIndex(p => (p.start <= today && p.end >= today));
@@ -221,7 +236,10 @@ export default function StaffAttendance() {
       }
       const now = new Date();
       const start = minDate || new Date(now.getFullYear(), now.getMonth(), 1);
-      const ps = generateHalfMonthPeriodsBetween(start, now);
+      const psAll = generateHalfMonthPeriodsBetween(start, now);
+      // remove any periods that end before Nov 16, 2025 (these are empty historical periods)
+      const cutoff = '2025-11-16';
+      const ps = psAll.filter(p => (p.end >= cutoff));
       setPeriods(ps);
       const today = todayYMDManila;
       const idx = ps.findIndex(p => (p.start <= today && p.end >= today));

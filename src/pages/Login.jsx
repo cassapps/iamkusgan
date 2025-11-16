@@ -180,8 +180,9 @@ export default function Login({ setToken }) {
           {/* Member sign-in (below staff) */}
           <div style={{ marginTop: 18, width: '100%', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#c9c9da', fontWeight: 600, marginBottom: 8 }}>Sign in as Member</div>
+            {/* Google sign-in intentionally hidden for public static build */}
             <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <button onClick={handleGoogleSignIn} style={{ borderRadius: 8, padding: '8px 12px', background: '#fff', color: '#222', cursor: 'pointer' }}>Sign in with Google</button>
+              <button disabled style={{ borderRadius: 8, padding: '8px 12px', background: '#fff', color: '#888', cursor: 'not-allowed', border: '1px solid #ddd' }}>Sign in with Google (disabled)</button>
             </div>
             <div style={{ marginTop: 8, color: '#8b8b9b', fontSize: 13 }}>Member login via Google is not yet enabled.</div>
           </div>
