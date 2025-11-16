@@ -1,4 +1,6 @@
 import { GoogleLogin } from '@react-oauth/google';
+import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { ensureFirebase } from '../lib/firebase';
 import { useEffect, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../lib/apiClient';
@@ -55,6 +57,23 @@ export default function Login({ setToken }) {
       setError('Server error — please try again');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Use Firebase sign-in for Google-based member/staff login
+  const handleGoogleSignIn = async () => {
+    try {
+      ensureFirebase();
+      const auth = getAuth();
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const idToken = await result.user.getIdToken();
+      // Use ID token directly with existing API by storing it as auth token
+      try { apiClient.setToken(idToken); } catch (e) {}
+      setToken(idToken);
+      try { navigate('/'); } catch (e) {}
+    } catch (err) {
+      setError('Google sign-in failed');
     }
   };
 
@@ -137,8 +156,8 @@ export default function Login({ setToken }) {
           {/* Member sign-in (below staff) */}
           <div style={{ marginTop: 18, width: '100%', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#c9c9da', fontWeight: 600, marginBottom: 8 }}>Sign in as Member</div>
-            <div style={{ opacity: 0.5, pointerEvents: 'none', display: 'flex', justifyContent: 'center' }}>
-              <GoogleLogin onSuccess={() => {}} onError={() => {}} />
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button onClick={handleGoogleSignIn} style={{ borderRadius: 8, padding: '8px 12px', background: '#fff', color: '#222', cursor: 'pointer' }}>Sign in with Google</button>
             </div>
             <div style={{ marginTop: 8, color: '#8b8b9b', fontSize: 13 }}>Member login via Google is not yet enabled.</div>
           </div>

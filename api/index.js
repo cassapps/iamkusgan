@@ -11,7 +11,20 @@ import path from 'path';
 // Initialize firebase-admin if credentials are provided or a key file exists in ./keys
 let adminReady = false;
 try {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  // Support both a JSON string env (GOOGLE_APPLICATION_CREDENTIALS_JSON) and
+  // the Google application credentials env path (GOOGLE_APPLICATION_CREDENTIALS).
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    try {
+      const svc = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+      const adminInit = { credential: admin.credential.cert(svc) };
+      if (process.env.FIREBASE_STORAGE_BUCKET) adminInit.storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+      admin.initializeApp(adminInit);
+      adminReady = true;
+      console.log('firebase-admin initialized for API server (GOOGLE_APPLICATION_CREDENTIALS_JSON)');
+    } catch (e) {
+      console.warn('firebase-admin failed to initialize from GOOGLE_APPLICATION_CREDENTIALS_JSON:', e && e.message);
+    }
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     const adminInit = { credential: admin.credential.applicationDefault() };
     if (process.env.FIREBASE_STORAGE_BUCKET) adminInit.storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
     admin.initializeApp(adminInit);
@@ -88,7 +101,7 @@ app.post('/auth/login', (req, res) => {
 });
 
 // auth/me - validate JWT and return user info
-app.get('/auth/me', (req, res) => {
+app.get('/auth/me', async (req, res) => {
   const auth = req.get('Authorization') || '';
   const [, token] = auth.split(' ');
   if (!token) return res.status(401).json({ error: 'missing token' });
@@ -97,21 +110,44 @@ app.get('/auth/me', (req, res) => {
     const payload = jwt.verify(token, secret);
     return res.json({ ok: true, user: payload });
   } catch (e) {
+    if (adminReady) {
+      try {
+        const fbPayload = await admin.auth().verifyIdToken(token);
+        const role = (fbPayload && fbPayload.role) || (fbPayload && fbPayload.admin ? 'admin' : 'staff');
+        return res.json({ ok: true, user: { username: fbPayload.email || fbPayload.uid, uid: fbPayload.uid, role } });
+      } catch (e2) {
+        return res.status(401).json({ error: 'invalid token' });
+      }
+    }
     return res.status(401).json({ error: 'invalid token' });
   }
 });
 
 // Middleware to require a valid JWT and attach req.user
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const auth = req.get('Authorization') || '';
   const [, token] = auth.split(' ');
   if (!token) return res.status(401).json({ error: 'missing token' });
   const secret = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
   try {
+    // First, try existing JWT flow for backward compatibility
     const payload = jwt.verify(token, secret);
     req.user = payload;
     return next();
   } catch (e) {
+    // If firebase admin is initialized, try verifying an ID token
+    if (adminReady) {
+      try {
+        const fbPayload = await admin.auth().verifyIdToken(token);
+        // Map Firebase ID token payload to our req.user structure
+        // prefer role from custom claims if present
+        const role = (fbPayload && fbPayload.role) || (fbPayload && fbPayload.admin ? 'admin' : 'staff');
+        req.user = { username: fbPayload.email || fbPayload.uid, uid: fbPayload.uid, role };
+        return next();
+      } catch (e2) {
+        // Not a Firebase token either; fall through to 401
+      }
+    }
     return res.status(401).json({ error: 'invalid token' });
   }
 }
@@ -227,44 +263,24 @@ app.put('/users/self/password', requireAuth, (req, res) => {
 });
 
 // List users (admin-only)
-app.get('/users', requireAuth, (req, res) => {
-  try {
-    const rows = db.prepare('SELECT id, username, role, created_at FROM users ORDER BY id DESC').all();
-    res.json(rows);
-  } catch (e) {
-    console.error('GET /users error', e && e.message);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-
-/* ---------- MEMBERS ---------- */
-app.get('/members', (req, res) => {
-  const rows = db.prepare('SELECT * FROM members ORDER BY created_at DESC').all();
-  res.json(rows);
-});
-
-app.post('/members', requireAuth, async (req, res) => {
-  const { full_name, plan } = req.body;
-  if (!full_name) return res.status(400).json({ error: 'full_name required' });
-
-  const id = `MBR-${(Math.floor(Math.random()*9000)+1000).toString().padStart(4,'0')}`;
-  const created_at = new Date().toISOString();
-
-  db.prepare(`
-    INSERT INTO members (id, full_name, plan, status, created_at)
-    VALUES (?, ?, ?, 'Active', ?)
-  `).run(id, full_name, plan || 'Monthly', created_at);
-
-  const row = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
-  // Mirror to Firestore if available (best-effort)
-  if (adminReady && MIRROR_TO_FIRESTORE) {
-    try {
-      const dbf = admin.firestore();
-      await dbf.collection('members').doc(String(row.id)).set({
-        id: String(row.id),
-        full_name: row.full_name,
-        plan: row.plan,
+    const jsonEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    const b64Env = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_B64;
+    if (jsonEnv || b64Env) {
+      try {
+        let svc = null;
+        if (b64Env) {
+          svc = JSON.parse(Buffer.from(String(b64Env), 'base64').toString('utf8'));
+        } else {
+          svc = JSON.parse(jsonEnv);
+        }
+        const adminInit = { credential: admin.credential.cert(svc) };
+        if (process.env.FIREBASE_STORAGE_BUCKET) adminInit.storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+        admin.initializeApp(adminInit);
+        adminReady = true;
+        console.log('firebase-admin initialized for API server (GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64)');
+      } catch (e) {
+        console.warn('firebase-admin failed to initialize from GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64:', e && e.message);
+      }
         status: row.status,
         created_at: row.created_at || created_at
       }, { merge: true });
