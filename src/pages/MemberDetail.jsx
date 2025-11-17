@@ -159,9 +159,10 @@ export default function MemberDetail() {
   const [checkModalMode, setCheckModalMode] = useState(null); // 'in' | 'out' | null
   const [viewProgressIndex, setViewProgressIndex] = useState(-1);
   const [imgFailed, setImgFailed] = useState(false);
-  const [visitsLimit, setVisitsLimit] = useState(10);
-  const [progressLimit, setProgressLimit] = useState(10);
-  const [paymentsLimit, setPaymentsLimit] = useState(10);
+  const [visitsLimit, setVisitsLimit] = useState(20);
+  const [progressLimit, setProgressLimit] = useState(20);
+  const [paymentsLimit, setPaymentsLimit] = useState(20);
+
 
   // Reset image-failed flag whenever the computed photo URL changes
   useEffect(() => { setImgFailed(false); }, [photoUrl]);
@@ -460,6 +461,19 @@ export default function MemberDetail() {
   }) || null;
   const hasOpenEntryToday = !!openVisit_global || !!openRaw_global;
 
+  // Range indicators for the three lists (used to show "Showing X–Y of Z")
+  const visitsTotal = (visits || []).length;
+  const visitsStart = visitsTotal ? 1 : 0;
+  const visitsEnd = Math.min(visitsLimit || 0, visitsTotal);
+
+  const progressTotal = (progress || []).length;
+  const progressStart = progressTotal ? 1 : 0;
+  const progressEnd = Math.min(progressLimit || 0, progressTotal);
+
+  const paymentsTotal = (payments || []).length;
+  const paymentsStart = paymentsTotal ? 1 : 0;
+  const paymentsEnd = Math.min(paymentsLimit || 0, paymentsTotal);
+
   return (
     <div className="content">
       {/* Header: buttons row on top, nickname centered below */}
@@ -644,10 +658,15 @@ export default function MemberDetail() {
           ))}
         </tbody>
         </table>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div className="table-range">{visitsTotal === 0 ? `Showing 0 of 0` : `Showing ${visitsStart}–${visitsEnd} of ${visitsTotal}`}</div>
+        </div>
+
         {visits.length > visitsLimit && (
           <div style={{ textAlign: "center", marginTop: 8 }}>
-            <button className="button" onClick={() => setVisitsLimit((n) => (n < visits.length ? Math.min(n + 10, visits.length) : 10))}>
-              {visitsLimit < visits.length ? `Load ${Math.min(10, visits.length - visitsLimit)} more` : 'Show less'}
+            <button className="button" onClick={() => setVisitsLimit((n) => (n < visits.length ? Math.min(n + 20, visits.length) : 20))}>
+              {visitsLimit < visits.length ? `Load ${Math.min(20, visits.length - visitsLimit)} more` : 'Show less'}
             </button>
           </div>
         )}
@@ -750,10 +769,15 @@ export default function MemberDetail() {
           })}
         </tbody>
         </table>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div className="table-range">{progressTotal === 0 ? `Showing 0 of 0` : `Showing ${progressStart}–${progressEnd} of ${progressTotal}`}</div>
+        </div>
+
         {progress.length > progressLimit && (
           <div style={{ textAlign: "center", marginTop: 8 }}>
-            <button className="button" onClick={() => setProgressLimit((n) => (n < progress.length ? Math.min(n + 10, progress.length) : 10))}>
-              {progressLimit < progress.length ? `Load ${Math.min(10, progress.length - progressLimit)} more` : 'Show less'}
+            <button className="button" onClick={() => setProgressLimit((n) => (n < progress.length ? Math.min(n + 20, progress.length) : 20))}>
+              {progressLimit < progress.length ? `Load ${Math.min(20, progress.length - progressLimit)} more` : 'Show less'}
             </button>
           </div>
         )}
@@ -803,10 +827,15 @@ export default function MemberDetail() {
           })}
         </tbody>
         </table>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div className="table-range">{paymentsTotal === 0 ? `Showing 0 of 0` : `Showing ${paymentsStart}–${paymentsEnd} of ${paymentsTotal}`}</div>
+        </div>
+
         {payments.length > paymentsLimit && (
           <div style={{ textAlign: "center", marginTop: 8 }}>
-            <button className="button" onClick={() => setPaymentsLimit((n) => (n < payments.length ? Math.min(n + 10, payments.length) : 10))}>
-              {paymentsLimit < payments.length ? `Load ${Math.min(10, payments.length - paymentsLimit)} more` : 'Show less'}
+            <button className="button" onClick={() => setPaymentsLimit((n) => (n < payments.length ? Math.min(n + 20, payments.length) : 20))}>
+              {paymentsLimit < payments.length ? `Load ${Math.min(20, payments.length - paymentsLimit)} more` : 'Show less'}
             </button>
           </div>
         )}

@@ -175,9 +175,24 @@ body{
   box-shadow: 0 2px 6px rgba(0,0,0,0.03);
 }
 .panel-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-weight: 700;
   margin-bottom: 10px;
   color: var(--text);
+}
+.panel-header .range{
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Small non-bold right-aligned range shown below tables */
+.table-range{
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 /* StaffAttendance: ensure the inline select + buttons match dashboard/button sizing */
@@ -266,6 +281,30 @@ body{
   flex:1; margin-left:260px; height:100vh;
   overflow-y:auto; padding:20px; background:var(--light-bg);
 }
+
+/* Topbar shown after login: white background with welcome text and reset link */
+.topbar{
+  background: #ffffff;
+  border: 1px solid var(--light-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.topbar-left{ font-weight: 800; color: var(--text); font-size: 0.95rem; }
+.topbar-right .button{ background: transparent; border: 1px solid var(--light-border); padding: 8px 12px; border-radius: 8px; cursor: pointer; color: var(--text); font-weight:700; }
+.topbar-right .button:hover{ box-shadow: var(--btn-ring); }
+
+/* Reset password modal form */
+.reset-password-form{ display:flex; flex-direction:column; gap:12px; min-width:320px; }
+.reset-password-row{ display:flex; flex-direction:column; gap:6px; }
+.reset-password-row label{ font-size:14px; color:var(--muted); font-style:italic; }
+.reset-password-row input{ height:44px; padding:10px 12px; border-radius:8px; border:1px solid var(--light-border); font-size:16px; }
+.reset-password-error{ color:#d64545; font-weight:700; margin-top:4px; }
+.reset-password-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
 
 /* ---------- Sidebar content ---------- */
 .brand{
@@ -433,8 +472,13 @@ table.aligned{ table-layout:fixed; margin-bottom:40px; }
 
 /* ---------- Status chips ---------- */
 .pill{
-  display:inline-block; padding:6px 10px; border-radius:999px;
-  font-size:15px; border:1px solid transparent; font-weight:800;
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:12px;
+  border:1px solid transparent;
+  font-weight:800;
+  letter-spacing:0.4px;
 }
 .pill.ok{ color:#2f9e44; border-color:#b7efc5; background:#e9f8ee; }
 .pill.bad{ color:#d64545; border-color:#f3b3b3; background:#fdecec; }

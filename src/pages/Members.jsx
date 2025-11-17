@@ -184,7 +184,7 @@ function buildLastVisitIndex(entriesRaw) {
 export default function Members() {
   const navigate = useNavigate();
   // no client-side "load more" pagination — we fetch a recent set from the server and support server-backed search
-  const [membersLimit] = useState(Number.POSITIVE_INFINITY);
+  const [membersLimit, setMembersLimit] = useState(20);
   const [rows, setRows] = useState([]);
   const [payIdx, setPayIdx] = useState(new Map());
   const [visitIdx, setVisitIdx] = useState(new Map());
@@ -341,6 +341,11 @@ export default function Members() {
     return withVisit;
   }, [rows, debouncedQ, visitIdx]);
 
+  // totals and ranges for members list
+  const membersTotal = (filteredSorted || []).length;
+  const membersStart = membersTotal ? 1 : 0;
+  const membersEnd = Math.min(membersLimit || 0, membersTotal);
+
   const openDetail = useCallback((memberId, row) => {
     if (!memberId) return;
     navigate(`/members/${encodeURIComponent(memberId)}`, { state: { row } });
@@ -367,7 +372,7 @@ export default function Members() {
   {loading && (<div style={{ color: 'var(--muted)', textAlign: 'center', padding: 16 }}>Loading…</div>)}
       {error && <div>Error: {error}</div>}
       {!loading && !error && (
-        <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
           {/* Fallback UI if rows are empty */}
           {rows.length === 0 && (
             <div style={{ padding: 24, textAlign: 'center', color: '#b91c1c', fontWeight: 600 }}>
@@ -402,7 +407,7 @@ export default function Members() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSorted.map(({ r, lastVisit, isToday, memberId }, i) => {
+                    {filteredSorted.slice(0, membersLimit).map(({ r, lastVisit, isToday, memberId }, i) => {
                       const pay = memberId ? payIdx.get(memberId) : undefined;
                       const isStudent = yesy(firstOf(r, ["student","is_student","student?"]));
                       let ageNum = Number(firstOf(r, ["age","years_old"]));
@@ -452,8 +457,8 @@ export default function Members() {
                   <div style={{ width: '15%', textAlign: 'center' }}>Coach Valid Until</div>
                 </div>
                 <List
-                  height={Math.min(listHeight, Math.max(200, filteredSorted.length * 56))}
-                  itemCount={filteredSorted.length}
+                  height={Math.min(listHeight, Math.max(200, Math.min(filteredSorted.length, membersLimit) * 56))}
+                  itemCount={Math.min(filteredSorted.length, membersLimit)}
                   itemSize={56}
                   width={'100%'}
                 >
@@ -504,7 +509,18 @@ export default function Members() {
               </div>
             )}
           </div>
-          {/* no client-side "Load more" — results come from the server (recent members or search) */}
+          {/* client-side range + load-more for convenience */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <div className="table-range">{membersTotal === 0 ? `Showing 0 of 0` : `Showing ${membersStart}–${membersEnd} of ${membersTotal}`}</div>
+          </div>
+
+          {membersTotal > membersLimit && (
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <button className="button" onClick={() => setMembersLimit((n) => (n < membersTotal ? Math.min(n + 20, membersTotal) : 20))}>
+                {membersLimit < membersTotal ? `Load ${Math.min(20, membersTotal - membersLimit)} more` : 'Show less'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import admin from 'firebase-admin';
 import prodHelpers from './products.js';
 import fs from 'fs';
+import { logAudit } from './audit.js';
 import path from 'path';
 
 // Initialize firebase-admin if credentials are provided or a key file exists in ./keys
@@ -157,6 +158,7 @@ app.post('/staff', requireAuth, async (req, res) => {
   if (!full_name) return res.status(400).json({ error: 'full_name required' });
   db.prepare('INSERT INTO staff (full_name, role, active) VALUES (?,?,1)').run(full_name.toUpperCase(), role || 'Staff');
   const row = db.prepare('SELECT * FROM staff ORDER BY id DESC LIMIT 1').get();
+  try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'staff', row_id: row && row.id, after: row }); } catch (e) {}
   // Mirror to Firestore if available (best-effort)
   if (adminReady && MIRROR_TO_FIRESTORE) {
     try {
@@ -186,6 +188,7 @@ app.post('/users', requireAuth, async (req, res) => {
     const stmt = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)');
     const info = stmt.run(username, hash, role || 'staff', created_at);
     const row = db.prepare('SELECT id, username, role, created_at FROM users WHERE id = ?').get(info.lastInsertRowid);
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'users', row_id: row && row.id, after: row }); } catch (e) {}
     // If firebase-admin is configured, mirror non-sensitive fields to Firestore
     if (adminReady && MIRROR_TO_FIRESTORE) {
       try {
@@ -218,6 +221,7 @@ app.put('/users/:id', requireAuth, async (req, res) => {
       }
     }
     const row = db.prepare('SELECT id, username, role, created_at, active FROM users WHERE id = ?').get(id);
+    try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'users', row_id: row && row.id, after: row }); } catch (e) {}
     if (!row) return res.status(404).json({ error: 'not found' });
     if (adminReady && MIRROR_TO_FIRESTORE) {
       try {
@@ -233,13 +237,15 @@ app.put('/users/:id', requireAuth, async (req, res) => {
 });
 
 // Update user password (admin only)
-app.put('/users/:id/password', requireAuth, (req, res) => {
+// Restrict :id to digits so it does not capture the literal `self` path.
+app.put('/users/:id(\\d+)/password', requireAuth, (req, res) => {
   try {
     const id = Number(req.params.id || 0);
     const { password } = req.body || {};
     if (!id || !password) return res.status(400).json({ error: 'id and password required' });
     const hash = bcrypt.hashSync(String(password), 10);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+    try { logAudit({ actor: req.user && req.user.username, action: 'update_password', table: 'users', row_id: id, details: { note: 'password changed by admin' } }); } catch (e) {}
     return res.json({ ok: true });
   } catch (e) {
     console.error('PUT /users/:id/password error', e && e.message);
@@ -255,6 +261,7 @@ app.put('/users/self/password', requireAuth, (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'username and password required' });
     const hash = bcrypt.hashSync(String(password), 10);
     db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, username);
+    try { logAudit({ actor: username, action: 'update_password', table: 'users', row_id: username, details: { note: 'self password change' } }); } catch (e) {}
     return res.json({ ok: true });
   } catch (e) {
     console.error('PUT /users/self/password error', e && e.message);
@@ -263,31 +270,14 @@ app.put('/users/self/password', requireAuth, (req, res) => {
 });
 
 // List users (admin-only)
-    const jsonEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    const b64Env = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_B64;
-    if (jsonEnv || b64Env) {
-      try {
-        let svc = null;
-        if (b64Env) {
-          svc = JSON.parse(Buffer.from(String(b64Env), 'base64').toString('utf8'));
-        } else {
-          svc = JSON.parse(jsonEnv);
-        }
-        const adminInit = { credential: admin.credential.cert(svc) };
-        if (process.env.FIREBASE_STORAGE_BUCKET) adminInit.storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
-        admin.initializeApp(adminInit);
-        adminReady = true;
-        console.log('firebase-admin initialized for API server (GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64)');
-      } catch (e) {
-        console.warn('firebase-admin failed to initialize from GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64:', e && e.message);
-      }
-        status: row.status,
-        created_at: row.created_at || created_at
-      }, { merge: true });
-    } catch (e) { console.warn('Failed to mirror member to Firestore', e && e.message); }
+app.get('/users', requireAuth, (req, res) => {
+  try {
+    const rows = db.prepare('SELECT id, username, role, created_at, active FROM users ORDER BY id DESC LIMIT 200').all();
+    return res.json(rows);
+  } catch (e) {
+    console.error('GET /users error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
   }
-
-  res.status(201).json(row);
 });
 
 // PUT /members/:id - update member (server-side fallback)
@@ -338,6 +328,7 @@ app.post('/attendance/checkin', requireAuth, async (req, res) => {
   `).run(staff.id, staff.full_name, time_in);
 
   const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
+  try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'attendance', row_id: row && row.id, after: row }); } catch (e) {}
   // Mirror to Firestore if available (best-effort)
   if (adminReady && MIRROR_TO_FIRESTORE) {
     try {
@@ -411,6 +402,8 @@ app.post('/attendance/clock', requireAuth, async (req, res) => {
         // Update both snake_case and sheet-style columns for compatibility
         db.prepare('UPDATE attendance SET time_out = ?, TimeOut = ?, status = ?, NoOfHours = ? WHERE id = ?').run(timeOut, timeOutHHMM, 'Off Duty', noOfHours, openRow.id);
       const updated = db.prepare('SELECT * FROM attendance WHERE id = ?').get(openRow.id);
+      try { logAudit({ actor: String(req.body.staff_name || req.body.staff_identifier || 'kiosk'), action: 'update', table: 'attendance', row_id: updated && updated.id, before: openRow, after: updated, details: { source: 'kiosk' } }); } catch (e) {}
+      try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'attendance', row_id: updated && updated.id, before: openRow, after: updated }); } catch (e) {}
       // Mirror to Firestore if available (best-effort)
       if (adminReady && MIRROR_TO_FIRESTORE) {
         try {
@@ -441,6 +434,7 @@ app.post('/attendance/clock', requireAuth, async (req, res) => {
         db.prepare('INSERT INTO attendance (staff_id, staff_name, time_in, Date, Staff, TimeIn, status) VALUES (?,?,?,?,?,?,?)')
           .run(staff.id, staff.full_name, timeIn, dateYMD, staff.full_name, timeInHHMM, 'On Duty');
         const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
+        try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'attendance', row_id: row && row.id, after: row }); } catch (e) {}
       // Mirror to Firestore if available (best-effort)
       if (adminReady && MIRROR_TO_FIRESTORE) {
         try {
@@ -469,16 +463,26 @@ app.post('/attendance/clock', requireAuth, async (req, res) => {
 // Public kiosk endpoint for simple staff clocking (no auth). Writes Date, Staff, TimeIn/TimeOut, NoOfHours.
 app.post('/attendance/kiosk', async (req, res) => {
   try {
-    const { staff_name, staff_identifier } = req.body || {};
+    const { staff_name, staff_identifier, wantsOut } = req.body || {};
     const name = String(staff_name || staff_identifier || '').trim();
     if (!name) return res.status(400).json({ error: 'staff_name required' });
 
     // Use today's date (YYYY-MM-DD) and prefer the `Date` column when present
     const today = new Date().toISOString().slice(0,10);
-    // Try to find an open row by Staff name (case-insensitive) for today
-    const openRow = db.prepare(
+    // Try to find an open row by Staff name (case-insensitive) for today.
+    // Prefer exact match, fallback to a LIKE match if not found (helps when queued names differ slightly).
+    let openRow = db.prepare(
       "SELECT * FROM attendance WHERE upper(Staff) = upper(?) AND (Date = ? OR date(time_in) = ?) AND (time_out IS NULL OR TRIM(time_out) = '') ORDER BY id DESC LIMIT 1"
     ).get(name, today, today);
+
+    if (!openRow) {
+      // If caller intends a checkout and exact lookup failed, try a fuzzy match (contains)
+      try {
+        openRow = db.prepare(
+          "SELECT * FROM attendance WHERE upper(Staff) LIKE upper(?) AND (Date = ? OR date(time_in) = ?) AND (time_out IS NULL OR TRIM(time_out) = '') ORDER BY id DESC LIMIT 1"
+        ).get(`%${name}%`, today, today);
+      } catch (e) { openRow = null; }
+    }
 
     if (openRow) {
       const now = new Date();
@@ -517,7 +521,40 @@ app.post('/attendance/kiosk', async (req, res) => {
       return res.json({ ok: true, action: 'checkout', row: updated });
     }
 
-    // No open row for today: insert a new sign-in row using sheet-style fields
+    // No open row for today
+    if (wantsOut) {
+      // Caller intended a checkout: append a checkout-only row so the TimeOut is recorded
+      const now = new Date();
+      const timeOut = now.toISOString();
+      const timeOutHHMM = timeOut.slice(11,16);
+      const dateYMD = timeOut.slice(0,10);
+      db.prepare('INSERT INTO attendance (time_out, Date, Staff, TimeOut, status, staff_name) VALUES (?,?,?,?,?,?)')
+        .run(timeOut, dateYMD, name, timeOutHHMM, 'Off Duty', name);
+      const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
+      try { logAudit({ actor: String(name || 'kiosk'), action: 'create', table: 'attendance', row_id: row && row.id, after: row, details: { source: 'kiosk', checkout_only: true } }); } catch (e) {}
+      if (adminReady && MIRROR_TO_FIRESTORE) {
+        try {
+          const dbf = admin.firestore();
+          await dbf.collection('attendance').doc(String(row.id)).set({
+            id: String(row.id),
+            staff_id: row.staff_id || null,
+            staff_name: row.staff_name || row.Staff || null,
+            time_in: row.time_in || null,
+            time_out: row.time_out || null,
+            Date: row.Date || null,
+            Staff: row.Staff || row.staff_name || null,
+            TimeIn: row.TimeIn || null,
+            TimeOut: row.TimeOut || null,
+            NoOfHours: typeof row.NoOfHours !== 'undefined' ? row.NoOfHours : null,
+            status: row.status || 'Off Duty',
+            mirroredAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.warn('Failed to mirror kiosk checkout-only row to Firestore', e && e.message); }
+      }
+      return res.json({ ok: true, action: 'checkout-only', row });
+    }
+
+    // Default: insert a new sign-in row using sheet-style fields
     const now = new Date();
     const timeIn = now.toISOString();
     const timeInHHMM = timeIn.slice(11,16);
@@ -525,6 +562,7 @@ app.post('/attendance/kiosk', async (req, res) => {
     db.prepare('INSERT INTO attendance (time_in, Date, Staff, TimeIn, status, staff_name) VALUES (?,?,?,?,?,?)')
       .run(timeIn, dateYMD, name, timeInHHMM, 'On Duty', name);
     const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
+    try { logAudit({ actor: String(name || 'kiosk'), action: 'create', table: 'attendance', row_id: row && row.id, after: row, details: { source: 'kiosk' } }); } catch (e) {}
     // Mirror to Firestore if available (best-effort)
     if (adminReady && MIRROR_TO_FIRESTORE) {
       try {
@@ -545,6 +583,177 @@ app.post('/attendance/kiosk', async (req, res) => {
     return res.json({ ok: true, action: 'checkin', row });
   } catch (e) {
     console.error('/attendance/kiosk error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+// Upsert attendance row: update existing by id or match by Staff+TimeIn+Date (or rowNumber)
+app.post('/attendance/upsert', requireAuth, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    if (!payload) return res.status(400).json({ error: 'payload required' });
+
+    // Prefer explicit id
+    if (payload.id) {
+      // Update both snake_case and sheet-style columns for compatibility
+      const id = String(payload.id);
+      // compute NoOfHours if TimeIn & TimeOut provided and no NoOfHours
+      try {
+        if ((payload.TimeIn || payload.time_in) && (payload.TimeOut || payload.time_out) && (typeof payload.NoOfHours === 'undefined' || payload.NoOfHours === null || payload.NoOfHours === '')) {
+          const tin = new Date(payload.TimeIn || payload.time_in);
+          const tout = new Date(payload.TimeOut || payload.time_out);
+          if (!isNaN(tin) && !isNaN(tout) && tout > tin) {
+            const hours = (tout.getTime() - tin.getTime()) / (1000 * 60 * 60);
+            payload.NoOfHours = Math.round(hours * 100) / 100;
+          }
+        }
+      } catch (e) { /* ignore */ }
+      const keys = Object.keys(payload);
+      const stmtParts = [];
+      const values = [];
+      for (const k of keys) {
+        if (k === 'id') continue;
+        stmtParts.push(`${k} = ?`);
+        values.push(payload[k]);
+      }
+      if (stmtParts.length) {
+        const sql = `UPDATE attendance SET ${stmtParts.join(', ')} WHERE id = ?`;
+        values.push(id);
+        db.prepare(sql).run(...values);
+      }
+      const row = db.prepare('SELECT * FROM attendance WHERE id = ?').get(id);
+      try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'attendance', row_id: row && row.id, after: row }); } catch (e) {}
+      // Mirror to Firestore if available
+      if (adminReady && MIRROR_TO_FIRESTORE) {
+        try {
+          const dbf = admin.firestore();
+          await dbf.collection('attendance').doc(String(row.id)).set({
+            id: String(row.id),
+            staff_id: row.staff_id || null,
+            staff_name: row.staff_name || row.Staff || null,
+            time_in: row.time_in || null,
+            time_out: row.time_out || null,
+            Date: row.Date || null,
+            Staff: row.Staff || row.staff_name || null,
+            TimeIn: row.TimeIn || null,
+            TimeOut: row.TimeOut || null,
+            NoOfHours: typeof row.NoOfHours !== 'undefined' ? row.NoOfHours : null,
+            status: row.status || null,
+            mirroredAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.warn('Failed to mirror upserted attendance to Firestore', e && e.message); }
+      }
+      return res.json({ ok: true, row });
+    }
+
+    // Try to match by Staff + TimeIn + Date
+    const staff = String(payload.Staff || payload.staff || payload.staff_name || payload.name || '').trim();
+    const pTimeIn = payload.TimeIn || payload.time_in || '';
+    const pDate = payload.Date || payload.date || '';
+    let match = null;
+    if (staff && pTimeIn && pDate) {
+      match = db.prepare('SELECT * FROM attendance WHERE (upper(Staff)=upper(?) OR upper(staff_name)=upper(?)) AND (TimeIn = ? OR time_in = ? OR Date = ? OR Date = ?) LIMIT 1')
+        .get(staff, staff, pTimeIn, pTimeIn, pDate, pDate) || null;
+    }
+
+    if (!match && payload.rowNumber) {
+      match = db.prepare('SELECT * FROM attendance WHERE rowNumber = ? LIMIT 1').get(payload.rowNumber) || null;
+    }
+
+    if (match) {
+      // compute NoOfHours if TimeIn & TimeOut provided
+      try {
+        if ((payload.TimeIn || payload.time_in) && (payload.TimeOut || payload.time_out) && (typeof payload.NoOfHours === 'undefined' || payload.NoOfHours === null || payload.NoOfHours === '')) {
+          const tin = new Date(payload.TimeIn || payload.time_in);
+          const tout = new Date(payload.TimeOut || payload.time_out);
+          if (!isNaN(tin) && !isNaN(tout) && tout > tin) {
+            const hours = (tout.getTime() - tin.getTime()) / (1000 * 60 * 60);
+            payload.NoOfHours = Math.round(hours * 100) / 100;
+          }
+        }
+      } catch (e) { /* ignore */ }
+      const keys = Object.keys(payload);
+      const stmtParts = [];
+      const values = [];
+      for (const k of keys) {
+        if (k === 'rowNumber') continue;
+        stmtParts.push(`${k} = ?`);
+        values.push(payload[k]);
+      }
+      if (stmtParts.length) {
+        const sql = `UPDATE attendance SET ${stmtParts.join(', ')} WHERE id = ?`;
+        values.push(match.id);
+        db.prepare(sql).run(...values);
+      }
+      const updated = db.prepare('SELECT * FROM attendance WHERE id = ?').get(match.id);
+      try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'attendance', row_id: updated && updated.id, after: updated }); } catch (e) {}
+      if (adminReady && MIRROR_TO_FIRESTORE) {
+        try {
+          const dbf = admin.firestore();
+          await dbf.collection('attendance').doc(String(updated.id)).set({
+            id: String(updated.id),
+            staff_id: updated.staff_id || null,
+            staff_name: updated.staff_name || updated.Staff || null,
+            time_in: updated.time_in || null,
+            time_out: updated.time_out || null,
+            Date: updated.Date || null,
+            Staff: updated.Staff || updated.staff_name || null,
+            TimeIn: updated.TimeIn || null,
+            TimeOut: updated.TimeOut || null,
+            NoOfHours: typeof updated.NoOfHours !== 'undefined' ? updated.NoOfHours : null,
+            status: updated.status || null,
+            mirroredAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.warn('Failed to mirror updated attendance to Firestore', e && e.message); }
+      }
+      return res.json({ ok: true, row: updated });
+    }
+
+    // Not found: insert new row
+    const now = new Date().toISOString();
+    const dateYMD = payload.Date || payload.date || now.slice(0,10);
+    const timeInVal = payload.TimeIn || payload.time_in || null;
+    const timeOutVal = payload.TimeOut || payload.time_out || null;
+    // insert with whatever fields are present
+    const insertStmt = db.prepare('INSERT INTO attendance (time_in, time_out, Date, Staff, TimeIn, TimeOut, status, staff_name, NoOfHours) VALUES (?,?,?,?,?,?,?,?,?)');
+    const timeInHHMM = timeInVal ? (String(timeInVal).slice(11,16)) : (payload.TimeIn || payload.time_in || null);
+    const timeOutHHMM = timeOutVal ? (String(timeOutVal).slice(11,16)) : (payload.TimeOut || payload.time_out || null);
+    // compute NoOfHours if both provided
+    let noOfHours = payload.NoOfHours || null;
+    try {
+      if (!noOfHours && timeInVal && timeOutVal) {
+        const tin = new Date(timeInVal);
+        const tout = new Date(timeOutVal);
+        if (!isNaN(tin) && !isNaN(tout) && tout > tin) {
+          noOfHours = Math.round(((tout.getTime() - tin.getTime()) / (1000 * 60 * 60)) * 100) / 100;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    insertStmt.run(timeInVal, timeOutVal, dateYMD, staff || payload.Staff || payload.staff || payload.staff_name || null, timeInHHMM, timeOutHHMM, payload.status || (timeOutVal ? 'Off Duty' : 'On Duty'), payload.staff_name || payload.Staff || null, noOfHours);
+    const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'attendance', row_id: row && row.id, after: row }); } catch (e) {}
+    if (adminReady && MIRROR_TO_FIRESTORE) {
+      try {
+        const dbf = admin.firestore();
+        await dbf.collection('attendance').doc(String(row.id)).set({
+          id: String(row.id),
+          staff_id: row.staff_id || null,
+          staff_name: row.staff_name || row.Staff || null,
+          time_in: row.time_in || null,
+          time_out: row.time_out || null,
+          Date: row.Date || null,
+          Staff: row.Staff || row.staff_name || null,
+          TimeIn: row.TimeIn || null,
+          TimeOut: row.TimeOut || null,
+          NoOfHours: typeof row.NoOfHours !== 'undefined' ? row.NoOfHours : null,
+          status: row.status || null,
+          mirroredAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (e) { console.warn('Failed to mirror inserted attendance to Firestore', e && e.message); }
+    }
+    return res.json({ ok: true, row });
+  } catch (e) {
+    console.error('/attendance/upsert error', e && e.message);
     return res.status(500).json({ error: 'server error' });
   }
 });
@@ -572,6 +781,7 @@ app.post('/payments', requireAuth, async (req, res) => {
   `).run(date, member_id, member_name, method, amount, productId);
 
   const row = db.prepare('SELECT * FROM payments ORDER BY id DESC LIMIT 1').get();
+  try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'payments', row_id: row && row.id, after: row }); } catch (e) {}
   // Mirror to Firestore if available (best-effort)
   if (adminReady && MIRROR_TO_FIRESTORE) {
     try {
@@ -624,6 +834,12 @@ app.post('/members/:id/purchase', requireAuth, async (req, res) => {
     db.prepare('UPDATE members SET membership_end = ?, coach_subscription_end = ? WHERE id = ?').run(newMembershipEnd, newCoachEnd, member.id);
 
     const updated = db.prepare('SELECT * FROM members WHERE id = ?').get(member.id);
+    // Log audit: payment created and member updated
+    try {
+      const paymentRow = db.prepare('SELECT * FROM payments ORDER BY id DESC LIMIT 1').get();
+      try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'payments', row_id: paymentRow && paymentRow.id, after: paymentRow, details: { product_id: product.id, member_id: member.id } }); } catch (e) {}
+    } catch (e) { /* ignore */ }
+    try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'members', row_id: updated && updated.id, before: member, after: updated, details: { product_id: product.id } }); } catch (e) {}
 
     // Mirror payment and updated member to Firestore if available (best-effort)
     if (adminReady && MIRROR_TO_FIRESTORE) {
@@ -710,6 +926,7 @@ app.post('/products', requireAuth, async (req, res) => {
         }, { merge: true });
       } catch (e) { console.warn('Failed to mirror product to Firestore', e && e.message); }
     }
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'products', row_id: row && row.id, after: row }); } catch (e) {}
     res.status(201).json(row);
   } catch (e) {
     console.error('POST /products error', e && e.message);
@@ -741,6 +958,7 @@ app.put('/products/:id', requireAuth, async (req, res) => {
         }, { merge: true });
       } catch (e) { console.warn('Failed to mirror updated product to Firestore', e && e.message); }
     }
+    try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'products', row_id: row && row.id, after: row }); } catch (e) {}
     res.json(row);
   } catch (e) {
     console.error('PUT /products/:id error', e && e.message);
@@ -759,6 +977,7 @@ app.delete('/products/:id', requireAuth, async (req, res) => {
         await dbf.collection('products').doc(String(id)).delete().catch(() => {});
       } catch (e) { console.warn('Failed to mirror product delete to Firestore', e && e.message); }
     }
+    try { logAudit({ actor: req.user && req.user.username, action: 'delete', table: 'products', row_id: id, details: { note: 'product deleted' } }); } catch (e) {}
     res.json({ ok: true });
   } catch (e) {
     console.error('DELETE /products/:id error', e && e.message);
@@ -821,6 +1040,7 @@ app.post('/gymEntries', requireAuth, async (req, res) => {
       } catch (e) { console.warn('Failed to mirror gymEntry to Firestore', e && e.message); }
     }
     res.status(201).json(row);
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'gymEntries', row_id: row && row.id, after: row }); } catch (e) {}
   } catch (e) { console.error('POST /gymEntries error', e && e.message); res.status(500).json({ error: 'server error' }); }
 });
 
@@ -835,6 +1055,7 @@ app.put('/gymEntries/:id', requireAuth, async (req, res) => {
     if (adminReady && MIRROR_TO_FIRESTORE) {
       try { const dbf = admin.firestore(); await dbf.collection('gymEntries').doc(String(id)).set({ ...row, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch (e) { console.warn('Failed to mirror gymEntry update', e && e.message); }
     }
+    try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'gymEntries', row_id: id, after: row }); } catch (e) {}
     res.json(row);
   } catch (e) { console.error('PUT /gymEntries/:id error', e && e.message); res.status(500).json({ error: 'server error' }); }
 });
@@ -855,6 +1076,7 @@ app.post('/progress', requireAuth, async (req, res) => {
     const info = stmt.run(MemberID, dateVal, notes, data);
     const row = db.prepare('SELECT * FROM progress WHERE id = ?').get(info.lastInsertRowid);
     if (adminReady && MIRROR_TO_FIRESTORE) { try { const dbf = admin.firestore(); await dbf.collection('progress').doc(String(row.id)).set({ ...row, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch (e) { console.warn('Failed to mirror progress to Firestore', e && e.message); } }
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'progress', row_id: row && row.id, after: row }); } catch (e) {}
     res.status(201).json(row);
   } catch (e) { console.error('POST /progress error', e && e.message); res.status(500).json({ error: 'server error' }); }
 });
@@ -868,6 +1090,7 @@ app.put('/progress/:id', requireAuth, async (req, res) => {
     db.prepare('UPDATE progress SET MemberID = ?, date = ?, notes = ?, data = ? WHERE id = ?').run(p.MemberID || p.memberId || p.memberid || null, p.date || p.Date || null, p.notes || p.Notes || null, data, id);
     const row = db.prepare('SELECT * FROM progress WHERE id = ?').get(id);
     if (adminReady && MIRROR_TO_FIRESTORE) { try { const dbf = admin.firestore(); await dbf.collection('progress').doc(String(id)).set({ ...row, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch (e) { console.warn('Failed to mirror progress update', e && e.message); } }
+    try { logAudit({ actor: req.user && req.user.username, action: 'update', table: 'progress', row_id: id, after: row }); } catch (e) {}
     res.json(row);
   } catch (e) { console.error('PUT /progress/:id error', e && e.message); res.status(500).json({ error: 'server error' }); }
 });
@@ -1029,6 +1252,7 @@ app.post('/members/create', requireAuth, async (req, res) => {
       return { id: membersRef.id, row: memberData };
     });
 
+    try { logAudit({ actor: req.user && req.user.username, action: 'create', table: 'members', row_id: result.id, after: result.row, details: { mirroredTo: 'firestore' } }); } catch (e) {}
     return res.status(201).json({ ok: true, id: result.id, row: result.row });
   } catch (e) {
     if (String(e.message || '').includes('nickname_exists')) {

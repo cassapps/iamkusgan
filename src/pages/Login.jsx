@@ -172,7 +172,7 @@ export default function Login({ setToken }) {
 
           {error && <div style={{ color: "#f44336", fontSize: 13 }}>{error}</div>}
 
-            <button type="submit" disabled={loading} style={{ marginTop: 6, padding: 12, borderRadius: 6, background: "#1976d2", color: "#fff", border: "none", cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.8 : 1 }}>
+            <button type="submit" disabled={loading} style={{ marginTop: 6, padding: '14px 12px', borderRadius: 6, background: "#1976d2", color: "#fff", border: "none", cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.8 : 1, fontSize: 18, fontWeight: 700 }}>
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>

@@ -4,6 +4,7 @@ import api from "../api";
 const { fetchMembers, fetchPayments, fetchGymEntries, fetchGymEntriesFresh, fetchPricing, fetchDashboard, gymQuickAppend } = api;
 import { fmtTime, fmtDate, display } from "./MemberDetail.jsx";
 import { isTimeOutMissingRow, firstOf as firstOfVisit } from '../lib/visitUtils';
+import { uniqueSessionCount } from '../lib/sessionUtils';
 import { computeStatusForMember } from '../lib/membership';
 import VisitViewModal from "../components/VisitViewModal";
 import CheckInConfirmModal from "../components/CheckInConfirmModal";
@@ -39,6 +40,8 @@ export default function Dashboard() {
   const [pricing, setPricing] = useState([]);
   const [showAllGym, setShowAllGym] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [gymLimit, setGymLimit] = useState(20);
+  const [paymentsLimit, setPaymentsLimit] = useState(20);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutMemberId, setCheckoutMemberId] = useState(null);
@@ -90,6 +93,11 @@ export default function Dashboard() {
     );
     });
   }, [gymEntries, members]);
+
+  // totals and ranges for gym entries
+  const gymEntryTotal = (gymEntryRows || []).length;
+  const gymEntryStart = gymEntryTotal ? 1 : 0;
+  const gymEntryEnd = Math.min(gymLimit || 0, gymEntryTotal);
 
   // Helper: compute stats from fetched arrays (returns stats object)
   const computeStatsFromData = (membersArr, paymentsArr, gymArr, pricingArr) => {
@@ -150,16 +158,8 @@ export default function Dashboard() {
     });
     const uniqueVisited = new Set(visitsToday.map(e => String(e.MemberID || e.member_id || e.id || "").trim()).filter(Boolean));
     const visitedToday = uniqueVisited.size;
-    // Coaching sessions: unique (memberId, coach) pairs for entries today where coach is present
-    const coachPairs = new Set();
-    for (const e of visitsToday) {
-      const coachVal = String(e.Coach || e.coach || '').trim();
-      const memberId = String(e.MemberID || e.member_id || e.id || '').trim();
-      if (coachVal && memberId) {
-        coachPairs.add(`${memberId}::${coachVal.toLowerCase()}`);
-      }
-    }
-    const coachToday = coachPairs.size;
+    // Coaching sessions: unique (memberId, coach, day) — use shared helper to normalize consistently
+    const coachToday = uniqueSessionCount(visitsToday);
     // Currently checked-in: unique members who have at least one today's entry with TimeIn and missing TimeOut
     const checkedInSet = new Set();
     for (const e of visitsToday) {
@@ -228,6 +228,11 @@ export default function Dashboard() {
     );
     });
   }, [payments, members]);
+
+  // totals and ranges for payments
+  const paymentsTotal = (paymentRows || []).length;
+  const paymentsStart = paymentsTotal ? 1 : 0;
+  const paymentsEnd = Math.min(paymentsLimit || 0, paymentsTotal);
  
 
   useEffect(() => {
@@ -364,16 +369,8 @@ export default function Dashboard() {
         const uniqueVisited = new Set(visitsToday.map(e => String(e.MemberID || e.member_id || e.id || "").trim()).filter(Boolean));
         const visitedToday = uniqueVisited.size;
 
-        // Coaching Sessions: unique (memberId, coach) pairs for today's entries where coach is present
-        const coachPairs = new Set();
-        for (const e of visitsToday) {
-          const coachVal = String(e.Coach || e.coach || '').trim();
-          const memberId = String(e.MemberID || e.member_id || e.id || '').trim();
-          if (coachVal && memberId) {
-            coachPairs.add(`${memberId}::${coachVal.toLowerCase()}`);
-          }
-        }
-        const coachToday = coachPairs.size;
+        // Coaching Sessions: unique (memberId, coach, day) — use shared helper to normalize consistently
+        const coachToday = uniqueSessionCount(visitsToday);
 
         // Currently Checked-In: unique members who have at least one open entry today (TimeIn present, TimeOut missing)
         const checkedInSet = new Set();
@@ -533,10 +530,21 @@ export default function Dashboard() {
               {(!gymEntryRows || (Array.isArray(gymEntryRows) && gymEntryRows.length === 0)) ? (
                 <tr><td colSpan={6}>-</td></tr>
               ) : (
-                gymEntryRows
+                (gymEntryRows || []).slice(0, gymLimit)
               )}
             </tbody>
           </table>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <div className="table-range">{gymEntryTotal === 0 ? `Showing 0 of 0` : `Showing ${gymEntryStart}–${gymEntryEnd} of ${gymEntryTotal}`}</div>
+          </div>
+
+          {gymEntryTotal > gymLimit && (
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <button className="button" onClick={() => setGymLimit((n) => (n < gymEntryTotal ? Math.min(n + 20, gymEntryTotal) : 20))}>
+                {gymLimit < gymEntryTotal ? `Load ${Math.min(20, gymEntryTotal - gymLimit)} more` : 'Show less'}
+              </button>
+            </div>
+          )}
         </div>
         {/* Visit detail modal */}
         <VisitViewModal
@@ -582,10 +590,21 @@ export default function Dashboard() {
               {(!paymentRows || (Array.isArray(paymentRows) && paymentRows.length === 0)) ? (
                 <tr><td colSpan={6}>-</td></tr>
               ) : (
-                paymentRows
+                (paymentRows || []).slice(0, paymentsLimit)
               )}
             </tbody>
           </table>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <div className="table-range">{paymentsTotal === 0 ? `Showing 0 of 0` : `Showing ${paymentsStart}–${paymentsEnd} of ${paymentsTotal}`}</div>
+          </div>
+
+          {paymentsTotal > paymentsLimit && (
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <button className="button" onClick={() => setPaymentsLimit((n) => (n < paymentsTotal ? Math.min(n + 20, paymentsTotal) : 20))}>
+                {paymentsLimit < paymentsTotal ? `Load ${Math.min(20, paymentsTotal - paymentsLimit)} more` : 'Show less'}
+              </button>
+            </div>
+          )}
         </div>
         {loading && <div style={{marginTop:24}}>Loading…</div>}
       </div>

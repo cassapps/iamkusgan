@@ -416,15 +416,18 @@ export default function CheckIn(){
           <div style={{ maxWidth: 420, width:'100%', margin:'0 auto' }}>
             <select value={memberId} onChange={e=>setMemberId(e.target.value)} style={{ width:'100%', height:44, padding:'8px 12px', border:'1px solid #e7e8ef', borderRadius:10 }}>
               <option value="">Select member…</option>
-              {members.map(m => (
-                <option key={m.MemberID} value={m.MemberID}>
-                  {(m.Nickname||m.NickName||m["Nick Name"]||"Member")} — {(m.FirstName||m.First||"")} {(m.LastName||m.Last||"")}
-                </option>
-              ))}
+              {members.map(m => {
+                const idVal = String(m.MemberID || m.memberId || m.id || m.memberid || '').trim();
+                return (
+                  <option key={idVal || JSON.stringify(m)} value={idVal}>
+                    {(m.Nickname||m.NickName||m["Nick Name"]||"Member")} — {(m.FirstName||m.First||"")} {(m.LastName||m.Last||"")}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div style={{ maxWidth: 420, width:'100%', margin:'0 auto' }}>
-            <button className="primary-btn" style={{ fontSize: '1.1rem', height: 54, width:'100%' }} onClick={()=>{ if(memberId) onDetected(memberId); }}>
+            <button className="primary-btn" style={{ fontSize: '1.1rem', height: 54, width:'100%' }} onClick={()=>{ if(memberId) onDetected(String(memberId).trim()); }}>
               Proceed
             </button>
           </div>
@@ -438,6 +441,9 @@ export default function CheckIn(){
         memberId={memberId}
         initialEntry={confirmInitialEntry}
         onClose={() => { setConfirmOpen(false); setResultText(''); }}
+        bundleOverride={bundle}
+        pricingOverride={{ rows: pricing }}
+        status={status}
         onSuccess={() => {
           setConfirmOpen(false);
           setResultText('');

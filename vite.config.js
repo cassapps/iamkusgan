@@ -17,7 +17,13 @@ export default defineConfig({
       '/members': 'http://localhost:4000',
       '/products': 'http://localhost:4000',
       // Proxy any /api/* requests and the upload endpoint to the API server
-      '/api': 'http://localhost:4000',
+      // Rewrite removes the `/api` prefix so the backend receives paths
+      // like `/users/self/password` (the backend is not mounted under /api).
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
       '/upload-photo': 'http://localhost:4000',
       '/staff': 'http://localhost:4000'
     }
