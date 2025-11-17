@@ -2,7 +2,11 @@
 // otherwise fall back to a simple proxy that forwards to the local /api backend.
 import * as firebaseApi from './firebase.js';
 
-const useFirestore = (import.meta.env.VITE_USE_FIRESTORE === 'true' || import.meta.env.VITE_USE_FIRESTORE === undefined);
+// Only enable Firestore client usage when explicitly requested via VITE_USE_FIRESTORE='true'.
+// In the published static bundle this env is unset — prefer the legacy proxy that talks to
+// the backend `/api` endpoints so attendance and other server-backed collections continue
+// to work for deployments that don't expose Firebase config to the browser.
+const useFirestore = (import.meta.env.VITE_USE_FIRESTORE === 'true');
 
 // Simple legacy proxy that calls local dev server endpoints under /api
 const legacyProxy = {
