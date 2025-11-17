@@ -37,9 +37,7 @@ export default function Login({ setToken }) {
         body: JSON.stringify({ username, password })
       });
       if (!res.ok) {
-        // Try static fallback for GitHub Pages / static hosting.
-        // If server rejects or is unavailable, allow a client-side fallback
-        // for the single `frontdesk` user with known password.
+        // Legacy single-user fallback (kept for backwards compatibility)
         const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
         if (fallbackOk) {
           const token = `local-token-${Date.now()}`;
@@ -67,7 +65,7 @@ export default function Login({ setToken }) {
         setError('Login failed');
       }
     } catch (err) {
-      // Network or server error: try client-side fallback for frontdesk
+      // Network or server error: fall back to the legacy single-user fallback only
       const fallbackOk = (String(username).trim() === 'frontdesk' && String(password) === 'Kusgan2025!');
       if (fallbackOk) {
         const token = `local-token-${Date.now()}`;

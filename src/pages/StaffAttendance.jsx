@@ -292,31 +292,51 @@ export default function StaffAttendance() {
     if (!selected) return;
     setBusy(true); setError('');
     try {
-      // Optimistic local update (so UI is instant)
-      const opt = localCache.addOptimisticAttendance(selected);
+      // If running on static hosting (GitHub Pages), do not attempt network writes
+      const isStaticSite = (typeof window !== 'undefined' && window.location && String(window.location.hostname || '').includes('github.io')) || String(import.meta.env.BASE_URL || '').includes('github.io');
+      // Create an optimistic attendance row locally without enqueueing legacy network fallbacks
+      const now = new Date();
+      const iso = now.toISOString();
+      const ymd = iso.slice(0,10);
+      const hhmm = iso.slice(11,16);
+      const tempId = 'local-' + Date.now();
+      const opt = {
+        id: tempId,
+        Staff: selected,
+        staff_name: selected,
+        Date: ymd,
+        TimeIn: hhmm,
+        time_in: iso,
+        status: 'On Duty',
+        _localPending: true
+      };
       setRows(prev => {
         const filtered = (prev || []).filter(r => String(r.id) !== String(opt.id));
-        return [opt, ...filtered];
+        const next = [opt, ...filtered];
+        try { localCache.setCached('attendance', next); } catch (e) {}
+        return next;
       });
 
-      // Write using the same client helper pattern as gym entries so writes persist
-      // to Firestore when configured (same behavior as gymQuickAppend).
-      try {
-        if (api && typeof api.attendanceQuickAppend === 'function') {
-          await api.attendanceQuickAppend(selected, {});
-        } else if (api && typeof api.clockIn === 'function') {
-          // fallback: clockIn helper
-          await api.clockIn(selected);
-        } else {
-          // As a final fallback, enqueue the legacy /attendance/kiosk request
+      if (isStaticSite) {
+        // Avoid any network fallbacks on static hosting (GitHub Pages)
+        setError('Attendance writes are disabled on the static/public build');
+      } else {
+        // Write using the same client helper pattern as gym entries so writes persist to Firestore when configured
+        try {
+          if (api && typeof api.attendanceQuickAppend === 'function') {
+            await api.attendanceQuickAppend(selected, {});
+          } else if (api && typeof api.clockIn === 'function') {
+            await api.clockIn(selected);
+          } else {
+            // As a final fallback, enqueue the legacy /attendance/kiosk request
+            localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
+            await localCache.processQueue();
+          }
+        } catch (err) {
+          console.warn('attendance client write failed, falling back to queue', err && err.message);
           localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
           await localCache.processQueue();
         }
-      } catch (err) {
-        // If client-side write fails, fallback to enqueueing the legacy kiosk POST
-        console.warn('attendance client write failed, falling back to queue', err && err.message);
-        localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
-        await localCache.processQueue();
       }
 
       // Refresh authoritative list (Firestone or server) so UI reflects final persisted rows

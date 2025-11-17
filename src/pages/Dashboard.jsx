@@ -13,7 +13,8 @@ import displayName from '../lib/displayName';
 
 function todayYMD() {
   const now = new Date();
-  return now.toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
+  // Use Manila timezone explicitly so "today" is calculated consistently across clients
+  return now.toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: 'Asia/Manila' });
 }
 
 // Keep local name firstOf for earlier usage but delegate to shared visit util
@@ -39,6 +40,8 @@ export default function Dashboard() {
   const [pricing, setPricing] = useState([]);
   const [showAllGym, setShowAllGym] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  // Local loading toast state (declared here to avoid runtime ReferenceError)
+  const [showLoadingToast, setShowLoadingToast] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutMemberId, setCheckoutMemberId] = useState(null);
@@ -48,7 +51,7 @@ export default function Dashboard() {
   const gymEntryRows = useMemo(() => {
     const todays = (gymEntries || []).filter(e => {
       const d = e.Date || e.date;
-      const ymd = d ? new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
+      const ymd = d ? new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: 'Asia/Manila' }) : "";
       return ymd === todayYMD();
     });
     // Sort: open entries (missing TimeOut) first, then by TimeIn descending
@@ -145,21 +148,32 @@ export default function Dashboard() {
     const visitsToday = (gymArr || []).filter(e => {
       const d = e.Date || e.date;
       if (!d) return false;
-      const s = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      const s = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' });
       return s === today;
     });
     const uniqueVisited = new Set(visitsToday.map(e => String(e.MemberID || e.member_id || e.id || "").trim()).filter(Boolean));
     const visitedToday = uniqueVisited.size;
-    // Coaching sessions: unique (memberId, coach) pairs for entries today where coach is present
-    const coachPairs = new Set();
+    // Coaching sessions: count unique members who had at least one visit today with a coach present
+    const coachMembers = new Set();
+    const isCoachPresent = (raw) => {
+      const v = String(raw || '').trim();
+      if (!v) return false;
+      const norm = v.toLowerCase();
+      if (norm === '-' || norm === '—' || norm === 'n/a' || norm === 'none') return false;
+      return true;
+    };
     for (const e of visitsToday) {
-      const coachVal = String(e.Coach || e.coach || '').trim();
+      const coachRaw = e.Coach ?? e.coach ?? '';
       const memberId = String(e.MemberID || e.member_id || e.id || '').trim();
-      if (coachVal && memberId) {
-        coachPairs.add(`${memberId}::${coachVal.toLowerCase()}`);
-      }
+      if (isCoachPresent(coachRaw) && memberId) coachMembers.add(memberId);
     }
-    const coachToday = coachPairs.size;
+    const coachToday = coachMembers.size;
+    try {
+      // Debug: expose why coachToday was computed this way (helps diagnose live-site mismatch)
+      console.debug('[dashboard] coachMembers', { coachToday, coachMemberIds: Array.from(coachMembers).slice(0,200), visitsTodayCount: visitsToday.length, uniqueVisitedCount: visitedToday });
+    } catch (e) {
+      /* ignore debug failures */
+    }
     // Currently checked-in: unique members who have at least one today's entry with TimeIn and missing TimeOut
     const checkedInSet = new Set();
     for (const e of visitsToday) {
@@ -196,9 +210,9 @@ export default function Dashboard() {
       const parsed = Date.parse(String(v));
       return isNaN(parsed) ? 0 : parsed;
     };
-    const todays = (payments || []).filter(p => {
+      const todays = (payments || []).filter(p => {
       const d = candidates(p);
-      const ymd = d ? new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
+      const ymd = d ? new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: 'Asia/Manila' }) : "";
       return ymd === today;
     }).sort((a, b) => {
       const ta = parseTs(candidates(a));
@@ -244,21 +258,21 @@ export default function Dashboard() {
           (async () => {
             setIsRefreshing(true);
             try {
-              const [membersRes, paymentsRes, gymRes, pricingRes] = await Promise.all([
+              const settled = await Promise.allSettled([
                 fetchMembers(), fetchPayments(), fetchGymEntries(), fetchPricing()
               ]);
-              setMembers(membersRes?.rows || membersRes?.data || []);
-              setPayments(paymentsRes?.rows || paymentsRes?.data || []);
-              setGymEntries(gymRes?.rows || gymRes?.data || []);
-              setPricing(pricingRes?.rows || pricingRes?.data || []);
-              // Recompute authoritative stats from the freshly fetched rows so UI reflects actual data
+              const [membersRes, paymentsRes, gymRes, pricingRes] = settled.map(r => r.status === 'fulfilled' ? r.value : null);
+              const membersRows = membersRes ? (membersRes.rows || membersRes.data || []) : [];
+              const paymentsRows = paymentsRes ? (paymentsRes.rows || paymentsRes.data || []) : [];
+              const gymRows = gymRes ? (gymRes.rows || gymRes.data || []) : [];
+              const pricingRows = pricingRes ? (pricingRes.rows || pricingRes.data || []) : [];
+              setMembers(membersRows);
+              setPayments(paymentsRows);
+              setGymEntries(gymRows);
+              setPricing(pricingRows);
+              // Recompute authoritative stats from whatever fresh rows we managed to fetch
               try {
-                const computed = computeStatsFromData(
-                  membersRes?.rows || membersRes?.data || [],
-                  paymentsRes?.rows || paymentsRes?.data || [],
-                  gymRes?.rows || gymRes?.data || [],
-                  pricingRes?.rows || pricingRes?.data || []
-                );
+                const computed = computeStatsFromData(membersRows, paymentsRows, gymRows, pricingRows);
                 setStats(computed);
               } catch (e) {
                 console.warn('Failed to recompute stats after background fetch', e);
@@ -275,16 +289,17 @@ export default function Dashboard() {
       // Fallback: fetch full data and compute client-side (already optimized)
       // Fetch in parallel (cached GETs will help)
       setIsRefreshing(true);
-      const [membersRes, paymentsRes, gymRes, pricingRes] = await Promise.all([
+      const settled = await Promise.allSettled([
         fetchMembers(),
         fetchPayments(),
         fetchGymEntries(),
         fetchPricing(),
       ]);
-      const membersData = membersRes?.rows || membersRes?.data || [];
-      const paymentsData = paymentsRes?.rows || paymentsRes?.data || [];
-      const gymEntriesData = gymRes?.rows || gymRes?.data || [];
-      const pricingData = pricingRes?.rows || pricingRes?.data || [];
+      const [membersRes, paymentsRes, gymRes, pricingRes] = settled.map(r => r.status === 'fulfilled' ? r.value : null);
+      const membersData = membersRes ? (membersRes.rows || membersRes.data || []) : [];
+      const paymentsData = paymentsRes ? (paymentsRes.rows || paymentsRes.data || []) : [];
+      const gymEntriesData = gymRes ? (gymRes.rows || gymRes.data || []) : [];
+      const pricingData = pricingRes ? (pricingRes.rows || pricingRes.data || []) : [];
       setMembers(membersData);
       setPayments(paymentsData);
       setGymEntries(gymEntriesData);
@@ -356,7 +371,7 @@ export default function Dashboard() {
         for (const e of gymArr) {
           const d = e.Date || e.date;
           if (!d) continue;
-          const s = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+          const s = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' });
           if (s === today) visitsToday.push(e);
         }
 
@@ -364,16 +379,24 @@ export default function Dashboard() {
         const uniqueVisited = new Set(visitsToday.map(e => String(e.MemberID || e.member_id || e.id || "").trim()).filter(Boolean));
         const visitedToday = uniqueVisited.size;
 
-        // Coaching Sessions: unique (memberId, coach) pairs for today's entries where coach is present
-        const coachPairs = new Set();
+        // Coaching Sessions: count unique members who had at least one visit today with a coach present
+        const coachMembers2 = new Set();
+        const isCoachPresent2 = (raw) => {
+          const v = String(raw || '').trim();
+          if (!v) return false;
+          const norm = v.toLowerCase();
+          if (norm === '-' || norm === '—' || norm === 'n/a' || norm === 'none') return false;
+          return true;
+        };
         for (const e of visitsToday) {
-          const coachVal = String(e.Coach || e.coach || '').trim();
+          const coachRaw = e.Coach ?? e.coach ?? '';
           const memberId = String(e.MemberID || e.member_id || e.id || '').trim();
-          if (coachVal && memberId) {
-            coachPairs.add(`${memberId}::${coachVal.toLowerCase()}`);
-          }
+          if (isCoachPresent2(coachRaw) && memberId) coachMembers2.add(memberId);
         }
-        const coachToday = coachPairs.size;
+        const coachToday = coachMembers2.size;
+        try {
+          console.debug('[dashboard] background compute coachMembers', { coachToday, coachMemberIds: Array.from(coachMembers2).slice(0,200), visitsTodayCount: visitsToday.length, uniqueVisitedCount: visitedToday });
+        } catch (e) { /* ignore */ }
 
         // Currently Checked-In: unique members who have at least one open entry today (TimeIn present, TimeOut missing)
         const checkedInSet = new Set();
@@ -390,7 +413,7 @@ export default function Dashboard() {
         for (const p of paymentsArr) {
           const d = p.Date || p.date || p.pay_date;
           if (!d) continue;
-          const ymd = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+          const ymd = new Date(d).toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' });
           if (ymd !== today) continue;
           const amt = parseFloat(p.Cost || p.amount || 0) || 0;
           totalPaymentsToday += amt;

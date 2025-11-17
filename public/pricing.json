@@ -1,0 +1,149 @@
+[
+  {
+    "id": "daily_pass_offpeak",
+    "name": "Daily Pass - Off Peak",
+    "price": 70.00,
+    "validity_days": 1,
+    "is_gym_membership": true,
+    "is_coach_subscription": false,
+    "category": "gym",
+    "time_window": "offpeak",
+    "discount": false,
+    "notes": "Available only if member has no active Gym Membership and during 06:00-14:59 Manila time"
+  },
+  {
+    "id": "daily_pass",
+    "name": "Daily Pass",
+    "price": 100.00,
+    "validity_days": 1,
+    "is_gym_membership": true,
+    "is_coach_subscription": false,
+    "category": "gym",
+    "time_window": "daily",
+    "discount": false,
+    "notes": "Available only if member has no active Gym Membership and during 15:00-21:59 Manila time"
+  },
+  {
+    "id": "monthly_discounted",
+    "name": "Monthly Pass - Discounted",
+    "price": 1000.00,
+    "validity_days": 30,
+    "is_gym_membership": true,
+    "is_coach_subscription": false,
+    "category": "gym",
+    "time_window": "any",
+    "discount": true,
+    "notes": "Discounted monthly membership — extends existing Gym membership by 30 days"
+  },
+  {
+    "id": "monthly_gym",
+    "name": "Monthly Pass",
+    "price": 1200.00,
+    "validity_days": 30,
+    "is_gym_membership": true,
+    "is_coach_subscription": false,
+    "category": "gym",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Standard monthly membership — extends existing Gym membership by 30 days"
+  },
+  {
+    "id": "yearly_gym",
+    "name": "Yearly Pass",
+    "price": 12000.00,
+    "validity_days": 365,
+    "is_gym_membership": true,
+    "is_coach_subscription": false,
+    "category": "gym",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Yearly membership — extends existing Gym membership by 365 days"
+  },
+
+  {
+    "id": "daily_coach",
+    "name": "Daily Coach Only",
+    "price": 200.00,
+    "validity_days": 1,
+    "is_gym_membership": false,
+    "is_coach_subscription": true,
+    "category": "coach",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Available only if member has no active Coach Subscription"
+  },
+  {
+    "id": "monthly_coach",
+    "name": "Monthly Coach Only",
+    "price": 2300.00,
+    "validity_days": 30,
+    "is_gym_membership": false,
+    "is_coach_subscription": true,
+    "category": "coach",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Monthly coach subscription — extends existing Coach subscription by 30 days"
+  },
+
+  {
+    "id": "daily_bundle_offpeak",
+    "name": "Daily Pass w/ Coach - Off Peak",
+    "price": 200.00,
+    "validity_days": 1,
+    "is_gym_membership": true,
+    "is_coach_subscription": true,
+    "category": "bundle",
+    "time_window": "offpeak",
+    "discount": false,
+    "notes": "Available only if no active Gym Membership OR Coach Subscription and during 06:00-14:59 Manila time"
+  },
+  {
+    "id": "daily_bundle",
+    "name": "Daily Pass w/ Coach",
+    "price": 300.00,
+    "validity_days": 1,
+    "is_gym_membership": true,
+    "is_coach_subscription": true,
+    "category": "bundle",
+    "time_window": "daily",
+    "discount": false,
+    "notes": "Available only if no active Gym Membership OR Coach Subscription and during 15:00-21:59 Manila time"
+  },
+  {
+    "id": "monthly_bundle",
+    "name": "Monthly Pass w/ Coach",
+    "price": 3500.00,
+    "validity_days": 30,
+    "is_gym_membership": true,
+    "is_coach_subscription": true,
+    "category": "bundle",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Monthly bundle — extends Gym membership and Coach subscription by configured days"
+  },
+
+  {
+    "id": "kusgan_shirt",
+    "name": "Kusgan Shirt",
+    "price": 600.00,
+    "validity_days": 0,
+    "is_gym_membership": false,
+    "is_coach_subscription": false,
+    "category": "merch",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Merchandise"
+  },
+  {
+    "id": "kusgan_id",
+    "name": "Kusgan ID",
+    "price": 150.00,
+    "validity_days": 0,
+    "is_gym_membership": false,
+    "is_coach_subscription": false,
+    "category": "merch",
+    "time_window": "any",
+    "discount": false,
+    "notes": "Merchandise (ID card)"
+  }
+]

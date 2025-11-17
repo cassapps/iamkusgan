@@ -151,6 +151,47 @@ export default function PaymentsPanel() {
     });
   };
 
+  // Compute whether the currently selected member has an active gym membership
+  const memberHasActiveMembership = useMemo(() => {
+    const id = String(form.MemberID || "").trim();
+    if (!id) return false;
+    // Look through payments rows for this member and find the latest gym-valid-until/end date
+    const mine = (rows || []).filter((r) => String(r.MemberID || r.memberId || r.MemberID || r.memberid || "").trim() === id);
+    let latest = null;
+    for (const p of mine) {
+      // possible fields that indicate gym valid-until
+      const candidates = [p.GymValidUntil, p.membershipEnd, p.EndDate, p.End, p.ValidUntil, p.Ended];
+      for (const c of candidates) {
+        if (!c) continue;
+        const d = new Date(c);
+        if (isNaN(d)) continue;
+        if (!latest || d.getTime() > latest.getTime()) latest = d;
+      }
+    }
+    if (!latest) return false;
+    latest.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
+    return latest.getTime() >= today.getTime();
+  }, [rows, form.MemberID]);
+
+  // Filter pricing to hide coach-only products when member has NO active gym membership
+  const filteredPricing = useMemo(() => {
+    return (pricing || []).filter((p) => {
+      const isGym = !!(p['Gym Membership'] || p['Gym membership'] || p.is_gym_membership);
+      const isCoach = !!(p['Coach Subscription'] || p['Coach subscription'] || p.is_coach_subscription);
+      // hide coach-only products when member lacks active gym membership
+      if (isCoach && !isGym && !memberHasActiveMembership) return false;
+      return true;
+    });
+  }, [pricing, memberHasActiveMembership]);
+
+  // Clear selection if chosen Particulars becomes ineligible
+  useEffect(() => {
+    if (!form.Particulars) return;
+    const stillThere = (filteredPricing || []).some((p) => String(p.Particulars) === String(form.Particulars));
+    if (!stillThere) setForm((f) => ({ ...f, Particulars: "", Cost: "", EndDate: "" }));
+  }, [filteredPricing]);
+
   // When StartDate changes, recompute EndDate using chosen validity
   const onStartDate = (start) => {
     const item = pricing.find(

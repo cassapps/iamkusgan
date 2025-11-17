@@ -25,65 +25,90 @@ const toManilaYMD = (d) => {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(date);
-};
+    (async () => {
+      try {
+        setError("");
+        let rows = [];
 
-// Manila current time HH:mm (24h)
-const manilaNowHM = () =>
-  new Intl.DateTimeFormat("en-PH", {
-    timeZone: MANILA_TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-    .format(new Date())
-    .replace(/^(\d{2}):(\d{2}).*$/, "$1:$2");
+        // 1) Try a static pricing.json from the shipped site (force this for Pages)
+        try {
+          const base = String(import.meta.env.BASE_URL || '/Kusgan/');
+          const staticUrls = [
+            `${base}pricing.json`,
+            '/Kusgan/pricing.json',
+            '/pricing.json'
+          ];
+          for (const u of staticUrls) {
+            try {
+              const r = await fetch(u);
+              if (r && r.ok) {
+                const prods = await r.json().catch(() => null);
+                if (prods && Array.isArray(prods) && prods.length > 0) {
+                  rows = (prods || []).map((pr) => ({
+                    Particulars: pr.name || pr.Particulars || pr.sku || `Product ${pr.id}`,
+                    Cost: (typeof pr.price !== 'undefined' ? Number(pr.price) : (pr.Cost || pr.Cost === 0 ? Number(pr.Cost) : '')) !== '' ? (Number(pr.price || pr.Cost || 0)).toFixed(2) : '',
+                    Validity: pr.validity_days || pr.validity || pr.Validity || 0,
+                    'Gym membership': pr.is_gym_membership || pr['Gym membership'] ? 'Yes' : 'No',
+                    'Coach subscription': pr.is_coach_subscription || pr['Coach subscription'] ? 'Yes' : 'No',
+                    Notes: pr.notes || pr.Notes || ''
+                  }));
+                  console.info('[PaymentModal] loaded static pricing from', u, 'mapped rows=', rows.length);
+                  break;
+                }
+              }
+            } catch (err) {
+              // try next static url
+            }
+          }
+        } catch (e) {
+          // ignore static fetch errors
+        }
 
-// Manila display: Mon-D, YYYY
-const displayManila = (dOrYmd) => {
-  if (!dOrYmd) return "-";
-  let date;
-  if (typeof dOrYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dOrYmd)) {
-    const [y, m, d] = dOrYmd.split("-").map(Number);
-    date = new Date(Date.UTC(y, m - 1, d));
-  } else {
-    date = dOrYmd instanceof Date ? dOrYmd : new Date(dOrYmd);
-  }
-  if (isNaN(date)) return "-";
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: MANILA_TZ, month: "short", day: "numeric", year: "numeric" }).formatToParts(date);
-  const m = parts.find((p) => p.type === "month")?.value || "";
-  const day = parts.find((p) => p.type === "day")?.value || "";
-  const y = parts.find((p) => p.type === "year")?.value || "";
-  return `${m}-${day}, ${y}`;
-};
+        // 2) If no static rows, try fetchPricing (Firestore) or legacy API endpoints
+        if ((!rows || rows.length === 0)) {
+          try {
+            const res = await fetchPricing();
+            if (res && Array.isArray(res.rows)) rows = res.rows;
+            else if (res && Array.isArray(res)) rows = res;
+          } catch (e) {
+            // ignore
+          }
+        }
 
-// Inclusive end-date: end = start + (days - 1)
-const endDateFrom = (startYMD, validityDays) => {
-  if (!startYMD || !validityDays) return "";
-  const [y, m, d] = startYMD.split("-").map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  utc.setUTCDate(utc.getUTCDate() + Math.max(0, Number(validityDays) - 1));
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(utc);
-};
+        // 3) If still empty, try legacy API endpoints
+        if ((!rows || rows.length === 0) && typeof fetch === 'function') {
+          const endpoints = ['/api/products', 'http://localhost:4000/products'];
+          for (const ep of endpoints) {
+            try {
+              const prodRes = await fetch(ep);
+              if (prodRes && prodRes.ok) {
+                const prods = await prodRes.json().catch(() => null);
+                if (prods && Array.isArray(prods) && prods.length > 0) {
+                  rows = (prods || []).map((pr) => ({
+                    Particulars: pr.name || pr.Particulars || pr.sku || `Product ${pr.id}`,
+                    Cost: (typeof pr.price !== 'undefined' ? Number(pr.price) : (pr.Cost || pr.Cost === 0 ? Number(pr.Cost) : '')) !== '' ? (Number(pr.price || pr.Cost || 0)).toFixed(2) : '',
+                    Validity: pr.validity_days || pr.validity || pr.Validity || 0,
+                    'Gym membership': pr.is_gym_membership || pr['Gym membership'] ? 'Yes' : 'No',
+                    'Coach subscription': pr.is_coach_subscription || pr['Coach subscription'] ? 'Yes' : 'No',
+                    Notes: pr.notes || pr.Notes || ''
+                  }));
+                  break;
+                }
+              }
+            } catch (err) {
+              // try next endpoint
+            }
+          }
+        }
 
-  // Helper: extract flags from pricing row (moved here so filtering can use it)
-  const truthy = (v) => {
-    const s = String(v ?? "").trim().toLowerCase();
-    return s === "yes" || s === "y" || s === "true" || s === "1";
-  };
-  const getFlags = (row) => {
-    if (!row) return { gym: false, coach: false };
-    const entries = Object.entries(row || {});
-    const findVal = (keys) => {
-      for (const [k, v] of entries) {
-        const nk = k.toLowerCase().replace(/\s+/g, "");
-        if (keys.some((kk) => nk === kk.toLowerCase().replace(/\s+/g, ""))) return v;
+        if (mounted) {
+          setPricing(rows || []);
+          try { console.debug('[PaymentModal] pricing loaded (final)', rows); } catch (e) {}
+        }
+      } catch (e) {
+        if (mounted) setError(e?.message || 'Failed to load pricing');
       }
+    })();
       return undefined;
     };
     const gymFlag = truthy(findVal(["Gym membership", "Gym Membership", "GymMembership", "Membership"]))
@@ -136,23 +161,34 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
           // ignore and fallback below
         }
 
-        // If we didn't get pricing rows, attempt a lightweight fallback to /api/products
+        // If we didn't get pricing rows, attempt a lightweight fallback to a static pricing
+        // file (preferred for GitHub Pages), then try legacy endpoints.
         if ((!rows || rows.length === 0) && typeof fetch === "function") {
-          const endpoints = ["/api/products", "http://localhost:4000/products"];
+          const endpoints = [
+            
+            // Project-site static fallback (serves from repo root on Pages)
+            "/Kusgan/pricing.json",
+            // Relative root fallback
+            "/pricing.json",
+            // Legacy endpoints
+            "/api/products",
+            "http://localhost:4000/products",
+          ];
           for (const ep of endpoints) {
             try {
               const prodRes = await fetch(ep);
               if (prodRes && prodRes.ok) {
                 const prods = await prodRes.json().catch(() => null);
-                if (prods && Array.isArray(prods)) {
+                if (prods && Array.isArray(prods) && prods.length > 0) {
                   rows = (prods || []).map((pr) => ({
-                    Particulars: pr.name || pr.sku || `Product ${pr.id}`,
-                    Cost: typeof pr.price !== "undefined" ? Number(pr.price).toFixed(2) : "",
-                    Validity: pr.validity_days || pr.validity || 0,
-                    "Gym membership": pr.is_gym_membership ? "Yes" : "No",
-                    "Coach subscription": pr.is_coach_subscription ? "Yes" : "No",
-                    Notes: pr.notes || "",
+                    Particulars: pr.name || pr.Particulars || pr.sku || `Product ${pr.id}`,
+                    Cost: (typeof pr.price !== "undefined" ? Number(pr.price) : (pr.Cost || pr.Cost === 0 ? Number(pr.Cost) : "")) !== "" ? (Number(pr.price || pr.Cost || 0)).toFixed(2) : "",
+                    Validity: pr.validity_days || pr.validity || pr.Validity || 0,
+                    "Gym membership": pr.is_gym_membership || pr["Gym membership"] ? "Yes" : "No",
+                    "Coach subscription": pr.is_coach_subscription || pr["Coach subscription"] ? "Yes" : "No",
+                    Notes: pr.notes || pr.Notes || "",
                   }));
+                  // do not set a static sentinel; always apply runtime eligibility rules
                   break;
                 }
               }
@@ -160,9 +196,17 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
               // try next endpoint
             }
           }
+          // If we're running on GitHub Pages or a project subpath, prefer the static fallback
+          // Note: do not auto-enable static-mode based on host/base here.
+          // We only mark a static fallback when we actually loaded a pricing.json
+          // earlier (see above where endpoints containing 'pricing.json' set the sentinel).
         }
 
         if (mounted) setPricing(rows || []);
+        // Debug: log pricing payload for troubleshooting in production
+        try {
+          if (typeof console !== 'undefined') console.debug('[PaymentModal] pricing loaded', rows);
+        } catch (e) {}
       } catch (e) {
         if (mounted) setError(e?.message || "Failed to load pricing");
       }
@@ -222,17 +266,24 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
 
   // Filter pricing based on eligibility rules
   const filteredPricing = useMemo(() => {
+    // Always apply eligibility filters based on pricing fields and member status.
+    // Do not auto-enable a 'static' mode when loading a static pricing.json.
     const canDiscount = !!(isStudent || isSenior);
     return (pricing || []).filter((p) => {
-      const name = String(p.Particulars || "").trim();
-      const lower = name.toLowerCase();
-      const isDiscounted = /(student|senior|discount|disc)/i.test(name);
-      const isOffPeak = /off\s*-?\s*peak|offpeak/i.test(name);
-      const isDaily = /\bdaily\b|daily\s*pass|1[- ]?day/i.test(name);
+      const name = String(p.Particulars || p.name || "").trim();
       const flags = getFlags(p);
 
+      // Prefer explicit pricing fields when available (time_window, discount, category)
+      const timeWindowField = String(p.time_window || p.TimeWindow || p.timeWindow || p.time || "").toLowerCase();
+      const categoryField = String(p.category || p.Category || "").toLowerCase();
+      const discountFlag = typeof p.discount !== 'undefined' ? !!p.discount : /(student|senior|discount|disc)/i.test(name);
+
+      // Fallback detections (backwards compat): keep regex checks as fallback
+      const isOffPeakItem = timeWindowField === 'offpeak' || /off\s*-?\s*peak|offpeak/i.test(name);
+      const isDailyItem = timeWindowField === 'daily' || /\bdaily\b|daily\s*pass|1[- ]?day/i.test(name) || Number(p.Validity || p.validity || p.validity_days || 0) === 1;
+
       // Discount items: require eligibility
-      if (isDiscounted && !canDiscount) return false;
+      if (discountFlag && !canDiscount) return false;
 
       // Compute current membership/coach active flags (compare dates by day)
       const memberHasActiveMembership = (() => {
@@ -254,10 +305,15 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
         } catch (e) { return false; }
       })();
 
-      // Daily categories
-      const isDailyGymOnly = isDaily && flags.gym && !flags.coach;
-      const isDailyCoachOnly = isDaily && flags.coach && !flags.gym;
-      const isDailyBundle = isDaily && flags.gym && flags.coach;
+      // Daily categories (explicit-first)
+      const isDailyGymOnly = isDailyItem && flags.gym && !flags.coach;
+      const isDailyCoachOnly = isDailyItem && flags.coach && !flags.gym;
+      const isDailyBundle = isDailyItem && flags.gym && flags.coach;
+
+      // New rule: coach-only items (daily or monthly) require an active gym membership.
+      // If the member does not have an active gym membership, hide coach-only products.
+      const isCoachOnly = flags.coach && !flags.gym;
+      if (isCoachOnly && !memberHasActiveMembership) return false;
 
       // Apply rules per type:
       // - Daily gym-only: hide only if member has active gym membership
@@ -269,12 +325,13 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
 
       // Off-peak items only visible in off-peak window
       // Exception: coach-only daily passes are available anytime (they're coach sessions)
-      if (isOffPeak && !isOffPeakWindow && !(isDaily && flags.coach && !flags.gym)) return false;
+      if (isOffPeakItem && !isOffPeakWindow && !(isDailyItem && flags.coach && !flags.gym)) return false;
 
       // Non-offpeak daily (regular daily) only visible in daily window
       // Exception: coach-only daily passes are available anytime
-      if (isDaily && !isOffPeak && !isDailyWindow && !(flags.coach && !flags.gym)) return false;
+      if (isDailyItem && !isOffPeakItem && !isDailyWindow && !(flags.coach && !flags.gym)) return false;
 
+      try { if (typeof console !== 'undefined') console.debug('[PaymentModal] filteredPricing result', { length: (pricing || []).filter(Boolean).length }); } catch (e) {}
       return true;
     });
   }, [pricing, isStudent, isSenior, isOffPeakWindow, isDailyWindow, membershipEnd, coachEnd]);
@@ -309,11 +366,12 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
     const cost = item ? (parseFloat(item.Cost) || 0).toFixed(2) : "";
     const validity = item ? Number(item.Validity || 0) : 0;
     const flags = getFlags(item);
-    // Promo: if this is a daily pass and the member has availed the exact same pass >=12 times in the last 30 days,
+    // Promo: if this is a daily pass (explicit or inferred) and the member has availed the exact same pass >=12 times in the last 30 days,
     // the next one is free.
-    const isDailyName = /\bdaily\b|daily\s*pass|1[- ]?day/i.test(String(val || ""));
+    const timeWindowField = String(item?.time_window || item?.TimeWindow || item?.time || "").toLowerCase();
+    const isDailyItem = timeWindowField === 'daily' || Number(item?.Validity || item?.validity || item?.validity_days || 0) === 1 || /\bdaily\b|daily\s*pass|1[- ]?day/i.test(String(val || ""));
     let promoApplies = false;
-    if (isDailyName && memberPayments && memberPayments.length) {
+    if (isDailyItem && memberPayments && memberPayments.length) {
       const now = Date.now();
       const cutoff = now - (30 * 24 * 60 * 60 * 1000);
       const nameTrim = String(val || "").trim();
@@ -397,9 +455,9 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
       const validity = item ? Number(item.Validity || 0) : 0;
       const flags = getFlags(item);
       // Additional client-side validation for special rules
-      const itemName = String(item?.Particulars || "").toLowerCase();
-      const isDailyItem = /\bdaily\b|daily\s*pass|1[- ]?day/i.test(itemName);
-      const isOffPeakItem = /off\s*-?\s*peak|offpeak/i.test(itemName);
+      const timeWindowField = String(item?.time_window || item?.TimeWindow || item?.time || "").toLowerCase();
+      const isDailyItem = timeWindowField === 'daily' || Number(item?.Validity || item?.validity || item?.validity_days || 0) === 1 || /\bdaily\b|daily\s*pass|1[- ]?day/i.test(String(item?.Particulars || ""));
+      const isOffPeakItem = timeWindowField === 'offpeak' || /off\s*-?\s*peak|offpeak/i.test(String(item?.Particulars || ""));
 
       // membership active check
       const memberHasActiveMembership = (() => {
@@ -469,6 +527,8 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
 
   if (!open) return null;
 
+  // No DOM-level static fallback: rely on runtime pricing and React rendering.
+
     return (
   <ModalWrapper open={open} onClose={onClose} title="Add Payment" width={560} noInternalScroll={true}>
         <form onSubmit={submit} style={{ width: '100%' }}>
@@ -491,37 +551,67 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label className="field" style={{ gridColumn: "1 / span 2" }}>
             <span className="label">Particulars</span>
-            <select value={form.Particulars} onChange={(e) => onParticulars(e.target.value)} required>
-              <option value="">Choose product/service</option>
-              {groupedPricing.gymOnly.length > 0 && (
-                <optgroup label="Gym membership only">
-                  {groupedPricing.gymOnly.map((p, i) => (
-                    <option key={`gym-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
-                  ))}
-                </optgroup>
-              )}
-              {groupedPricing.coachOnly.length > 0 && (
-                <optgroup label="Coach subscription only">
-                  {groupedPricing.coachOnly.map((p, i) => (
-                    <option key={`coach-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
-                  ))}
-                </optgroup>
-              )}
-              {groupedPricing.bundle.length > 0 && (
-                <optgroup label="Gym & Coach bundle">
-                  {groupedPricing.bundle.map((p, i) => (
-                    <option key={`bundle-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
-                  ))}
-                </optgroup>
-              )}
-              {groupedPricing.merch.length > 0 && (
-                <optgroup label="Merchandise">
-                  {groupedPricing.merch.map((p, i) => (
-                    <option key={`merch-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+            {/* If pricing rows failed to load in production, allow manual entry */}
+            {( (!pricing || pricing.length === 0) || (Array.isArray(pricing) && filteredPricing && filteredPricing.length === 0) ) ? (
+              <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                <input
+                  type="text"
+                  placeholder="No products loaded — enter product/service"
+                  value={form.Particulars}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // When manually typing, treat as manual selection
+                    setForm((f) => ({ ...f, Particulars: v }));
+                  }}
+                  required
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Cost"
+                    value={form.Cost}
+                    onChange={(e) => setForm((f) => ({ ...f, Cost: e.target.value }))}
+                    style={{ flex: 1 }}
+                    required
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Pricing data not available — enter particulars and cost manually.</div>
+              </div>
+            ) : (
+              <select value={form.Particulars} onChange={(e) => onParticulars(e.target.value)} required>
+                <option value="">Choose product/service</option>
+                {groupedPricing.gymOnly.length > 0 && (
+                  <optgroup label="Gym membership only">
+                    {groupedPricing.gymOnly.map((p, i) => (
+                      <option key={`gym-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {groupedPricing.coachOnly.length > 0 && (
+                  <optgroup label="Coach subscription only">
+                    {groupedPricing.coachOnly.map((p, i) => (
+                      <option key={`coach-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {groupedPricing.bundle.length > 0 && (
+                  <optgroup label="Gym & Coach bundle">
+                    {groupedPricing.bundle.map((p, i) => (
+                      <option key={`bundle-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {groupedPricing.merch.length > 0 && (
+                  <optgroup label="Merchandise">
+                    {groupedPricing.merch.map((p, i) => (
+                      <option key={`merch-${p.Particulars}-${i}`} value={p.Particulars}>{p.Particulars}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            )}
             {/* New validity preview below Particulars, soft pink */}
             {form.Particulars && (() => {
               const item = (filteredPricing || []).find((r) => String(r.Particulars) === String(form.Particulars));
@@ -565,7 +655,7 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
 
           <label className="field">
             <span className="label">Cost</span>
-            <input type="number" step="0.01" min="0" value={form.Cost} readOnly disabled />
+            <input type="number" step="0.01" min="0" value={form.Cost} readOnly={!!(!pricing || pricing.length === 0) ? false : true} disabled={!!(!pricing || pricing.length === 0) ? false : true} onChange={(e) => setForm((f) => ({ ...f, Cost: e.target.value }))} />
             {form.PromoApplied && (
               <div style={{ marginTop: 6, fontSize: 12, color: '#065f46' }}>Promo applied — this item will be free (12 uses in last 30 days)</div>
             )}
