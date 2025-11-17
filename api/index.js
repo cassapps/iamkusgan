@@ -87,6 +87,51 @@ app.post('/auth/login', (req, res) => {
   }
 
   try {
+    // If firebase-admin is initialized, prefer Firestore user lookup. Many deployments
+    // store users in Firestore (doc id is username). If found, compare bcrypt hash
+    // stored in Firestore field `password_hash` and accept login.
+    if (adminReady) {
+      try {
+        const dbf = admin.firestore();
+        // Try document named by username first (common pattern). Fall back to query.
+        let userDoc = await dbf.collection('users').doc(String(username)).get();
+        let userData = null;
+        if (userDoc && userDoc.exists) {
+          userData = userDoc.data();
+        } else {
+          // fallback: query collection where username field matches
+          const q = await dbf.collection('users').where('username', '==', String(username)).limit(1).get();
+          if (!q.empty) userData = q.docs[0].data();
+        }
+        if (userData) {
+          const storedHash = userData.password_hash || userData.passwordHash || userData.password || '';
+          if (!storedHash) return res.status(401).json({ error: 'invalid credentials' });
+          const match = bcrypt.compareSync(String(password), String(storedHash));
+          if (!match) return res.status(401).json({ error: 'invalid credentials' });
+          const role = userData.role || 'staff';
+          const secret = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
+          const token = jwt.sign({ username: String(username), role }, secret, { expiresIn: '8h' });
+          // Optionally mirror to local sqlite users table for compatibility
+          try {
+            const existing = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+            if (!existing) {
+              const hash = bcrypt.hashSync(String(password), 10);
+              const created_at = new Date().toISOString();
+              db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)').run(username, hash, role, created_at);
+            }
+          } catch (e) {
+            // non-fatal
+            console.warn('Failed to mirror Firestore user to sqlite', e && e.message);
+          }
+          return res.json({ ok: true, token, user: { username: String(username), role } });
+        }
+      } catch (e) {
+        console.warn('Firestore user lookup failed during login', e && e.message);
+        // fall through to sqlite lookup below
+      }
+    }
+
+    // Fallback to local sqlite users table
     const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
     if (!row) return res.status(401).json({ error: 'invalid credentials' });
     const match = bcrypt.compareSync(password, row.password_hash);
