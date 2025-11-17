@@ -3,3 +3,5 @@ dist/
 .env*
 .DS_Store
 keys/kusgan-6ca2f-266285fa1c66.json
+.vercel
+kusgan-6ca2f-.json

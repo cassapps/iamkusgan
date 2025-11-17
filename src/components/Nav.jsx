@@ -50,7 +50,12 @@ export default function Nav({ onLogout = () => {} }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <img src="/kusgan-frontend/kusgan-logo.png" alt="Kusgan logo" className="brand-logo" style={{ width: 350, height: "auto" }}/>
+        <img
+          src={`${import.meta.env.BASE_URL}kusgan-logo.png`}
+          alt="Kusgan logo"
+          className="brand-logo"
+          style={{ width: 350, height: "auto" }}
+        />
       </div>
 
       <div className="sidebar-info">

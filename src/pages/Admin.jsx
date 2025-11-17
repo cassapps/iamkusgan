@@ -360,10 +360,10 @@ export default function AdminPage() {
                           try {
                             let res;
                             if (u.id) {
-                              res = await apiClient.fetchWithAuth(`/users/${u.id}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: resetPassword }) });
+                              res = await apiClient.fetchWithAuth(`/api/users/${u.id}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: resetPassword }) });
                             } else {
                               // fallback to self-password endpoint when we don't have user id
-                              res = await apiClient.fetchWithAuth(`/users/self/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: resetPassword }) });
+                              res = await apiClient.fetchWithAuth(`/api/users/self/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: resetPassword }) });
                             }
                             if (!res.ok) { const j = await res.json().catch(()=>({})); setMsg(j.error || 'Reset failed'); return; }
                             setMsg('Password reset'); setResettingId(null); setResetPassword(''); await refreshUsers();

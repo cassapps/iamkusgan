@@ -46,6 +46,22 @@ CREATE TABLE IF NOT EXISTS payments (
 
 `);
 
+/* ---------- AUDIT LOGS ---------- */
+db.exec(`
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor TEXT,
+  action TEXT,
+  table_name TEXT,
+  row_id TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  details TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+ 
+
 /* ---------- GYM ENTRIES (check-ins/check-outs for members) ---------- */
 /* ---------- GYM ENTRIES (check-ins/check-outs for members) ---------- */
 db.exec(`

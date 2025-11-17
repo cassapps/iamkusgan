@@ -46,7 +46,7 @@ const driveThumb = (u) => {
 
 // membership detection now uses shared helper in src/lib/membership
 
-export default function CheckInConfirmModal({ open, onClose, memberId, initialEntry = null, onSuccess, status: statusProp = null, mode = null }) {
+export default function CheckInConfirmModal({ open, onClose, memberId, initialEntry = null, onSuccess, status: statusProp = null, mode = null, bundleOverride = null, pricingOverride = null }) {
   const [bundle, setBundle] = useState(null);
   const [pricing, setPricing] = useState([]);
   const [status, setStatus] = useState(null);
@@ -67,6 +67,17 @@ export default function CheckInConfirmModal({ open, onClose, memberId, initialEn
     (async () => {
       setLoading(true);
       try {
+        // If parent supplied a bundle/pricing, reuse it to avoid redundant network calls
+        if (bundleOverride && String((bundleOverride.member && (bundleOverride.member.MemberID || bundleOverride.member.memberId || bundleOverride.member.id)) || '').trim() === String(memberId).trim()) {
+          const b = bundleOverride;
+          const rows = pricingOverride?.rows || pricingOverride?.data || (pricingOverride || []);
+          setBundle(b);
+          setPricing(Array.isArray(rows) ? rows : (rows?.rows || rows?.data || []));
+          const st = statusProp || computeStatusForMember(b?.payments || [], memberId, Array.isArray(rows) ? rows : (rows?.rows || rows?.data || []));
+          setStatus(st);
+          setLoading(false);
+          return;
+        }
         console.debug('[CheckInConfirmModal] loading bundle for', memberId);
         const [b, p] = await Promise.all([fetchMemberBundle(memberId), fetchPricing()]);
         if (!alive) return;
@@ -131,7 +142,7 @@ export default function CheckInConfirmModal({ open, onClose, memberId, initialEn
     return () => { alive = false; };
   // Depend on identifying fields of initialEntry instead of whole object to avoid
   // rerunning the effect when the prop reference changes but meaningful data hasn't.
-  }, [open, memberId, initialEntry?.rowNumber, initialEntry?.Date, initialEntry?.TimeIn, statusProp]);
+  }, [open, memberId, initialEntry?.rowNumber, initialEntry?.Date, initialEntry?.TimeIn, statusProp, bundleOverride, pricingOverride]);
 
   const m = bundle?.member || null;
 

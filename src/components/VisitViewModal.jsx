@@ -166,8 +166,23 @@ export default function VisitViewModal({ open, onClose, row, onCheckout }) {
           <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, fontSize: 16, minHeight: 72 }}>{comments || "-"}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          {/* Show Check Out if entry has no TimeOut: navigate to Check-In page to use the unified confirm modal */}
-          {(!timeOut) ? (
+          {/* Show Check Out only if entry has no TimeOut and is for today (Manila) */}
+            {(!timeOut && (() => {
+              try {
+                const raw = String(dateRaw || '').trim();
+                if (!raw) return false;
+                // accept YYYY-MM-DD or ISO-like timestamps
+                let ymd = '';
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) ymd = raw.slice(0,10);
+                else {
+                  const d = new Date(raw);
+                  if (isNaN(d)) return false;
+                  ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(d);
+                }
+                const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+                return ymd === today;
+              } catch (e) { return false; }
+            })()) ? (
             <button
               className="primary-btn"
               onClick={() => {

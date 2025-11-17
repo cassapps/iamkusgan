@@ -3,8 +3,8 @@
 This file contains short, actionable guidance to help AI coding agents be productive in this repo.
 
 ## Quick summary
-- Tech: React + Vite (ESM project, see `package.json` "type": "module").
--- No traditional backend: the project now uses Firestore (Firebase) for persistent data instead of Google Sheets.
+- Tech: React + Vite (ESM project, see `package.json` (the `"type": "module"` field)).
+  - No traditional backend: the project now uses Firestore (Firebase) for persistent data instead of Google Sheets.
 - Main UI: `src/components/` (reusable pieces) and `src/pages/` (views).
 
 ## Useful commands
@@ -21,7 +21,7 @@ This file contains short, actionable guidance to help AI coding agents be produc
 
 ## API & integrations
 - Google Apps Script and Sheets integration has been replaced with Firestore for persistent data. Use the Firestore adapter in `src/api/firebase.js` and the client helper in `src/lib/firebase.js`.
--- Local node scripts: `api/` and `scripts/` contain Node utilities and smoke tests (e.g., `scripts/firestore-seed-sample.js`, `scripts/firestore-smoke-test.js`, `api/index.js`). Inspect these before adding ad-hoc scripts.
+  - Local node scripts: `api/` and `scripts/` contain Node utilities and smoke tests (e.g., `scripts/firestore-seed-sample.js`, `scripts/firestore-smoke-test.js`, `api/index.js`). Inspect these before adding ad-hoc scripts.
 
 ## Project conventions and gotchas
 - File types: React components use `.jsx`; project is ESM (`type: "module"`) so prefer import syntax compatible with Vite.
@@ -36,11 +36,11 @@ This file contains short, actionable guidance to help AI coding agents be produc
 - Prefer updating the existing wrapper functions in `src/api/firebase.js` and `src/lib/firebase.js` instead of adding duplicate network logic.
 
 ## Files that often matter during changes
--- `src/lib/firebase.js` — Firebase client wrapper for Firestore and Storage.
--- (legacy) `src/api/sheets.js` — removed. Use `src/api/firebase.js` for Firestore-backed helpers.
+- `src/lib/firebase.js` — Firebase client wrapper for Firestore and Storage.
+- (legacy) `src/api/sheets.js` — removed. Use `src/api/firebase.js` for Firestore-backed helpers.
 - `src/utils/membersStore.js` — member state logic.
 - `src/components/ModalWrapper.jsx` — modal pattern to reuse.
--- `apps-script/kusgan/Code.js` — (archived) original Apps Script server code for historical reference.
+- `apps-script/kusgan/Code.js` — (archived) original Apps Script server code for historical reference.
 - `vite.config.js` — change `base` for GitHub Pages.
 
 ## What to ask the human

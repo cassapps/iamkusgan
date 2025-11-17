@@ -5,6 +5,7 @@ import localCache from '../lib/localCache.js';
 import displayName from '../lib/displayName';
 import VisitViewModal from '../components/VisitViewModal';
 import api from '../api';
+import { uniqueSessionCount } from '../lib/sessionUtils';
 
 const STAFF = [
   'Coach Jojo', 'Coach Elmer', 'Bezza', 'Jeanette', 'Johanna', 'Patpat', 'Sheena', 'Xyza'
@@ -106,9 +107,22 @@ export default function StaffAttendance() {
       if (cached && cached.length) setRows(cached);
 
       // then fetch fresh server state and update cache
-      const res = await fetch('/attendance');
-      const json = await res.json();
-      const serverRows = Array.isArray(json) ? json : [];
+      // On static/public builds there is no server /attendance endpoint — use client API instead
+      let serverRows = [];
+      try {
+        if (api && typeof api.fetchAttendance === 'function') {
+          const ar = await api.fetchAttendance();
+          serverRows = (ar && (ar.rows || ar.data)) ? (ar.rows || ar.data) : (Array.isArray(ar) ? ar : []);
+        } else {
+          // fallback to legacy endpoint if present
+          const res = await fetch('/attendance');
+          const json = await res.json();
+          serverRows = Array.isArray(json) ? json : [];
+        }
+      } catch (e) {
+        console.warn('fetch attendance failed', e && e.message);
+        serverRows = [];
+      }
       setRows(serverRows);
       localCache.setCached('attendance', serverRows);
       // also fetch members so we can show nicknames in coaching sessions
@@ -133,6 +147,10 @@ export default function StaffAttendance() {
 
   // today's date in YYYY-MM-DD (Manila) to scope 'On' badges to today only
   const todayYMDManila = new Intl.DateTimeFormat('en-CA', { timeZone: MANILA_TZ }).format(new Date());
+
+  // Pagination / limits for the two tables (default to 20 like MemberDetail)
+  const [attendanceLimit, setAttendanceLimit] = useState(20);
+  const [coachingLimit, setCoachingLimit] = useState(20);
 
   // Coaching sessions UI state
   const COACHES = ['Coach Jojo', 'Coach Elmer'];
@@ -201,9 +219,11 @@ export default function StaffAttendance() {
   useEffect(() => {
     try {
       if (!gymVisits || gymVisits.length === 0) {
-        // fallback: generate recent periods for usability
+        // fallback: start periods from Nov 16, 2025 and exclude earlier empty periods
         const now = new Date();
-        const ps = generateHalfMonthPeriodsBetween(new Date(now.getFullYear(), now.getMonth() - 3, 1), now);
+        const cutoff = '2025-11-16';
+        const psAll = generateHalfMonthPeriodsBetween(new Date(2025, 10, 16), now);
+        const ps = psAll.filter(p => (p.end >= cutoff));
         setPeriods(ps);
         const today = todayYMDManila;
         const idx = ps.findIndex(p => (p.start <= today && p.end >= today));
@@ -221,7 +241,10 @@ export default function StaffAttendance() {
       }
       const now = new Date();
       const start = minDate || new Date(now.getFullYear(), now.getMonth(), 1);
-      const ps = generateHalfMonthPeriodsBetween(start, now);
+      const psAll = generateHalfMonthPeriodsBetween(start, now);
+      // remove any periods that end before Nov 16, 2025 (these are empty historical periods)
+      const cutoff = '2025-11-16';
+      const ps = psAll.filter(p => (p.end >= cutoff));
       setPeriods(ps);
       const today = todayYMDManila;
       const idx = ps.findIndex(p => (p.start <= today && p.end >= today));
@@ -244,6 +267,11 @@ export default function StaffAttendance() {
       });
     } catch (e) { return []; }
   }, [rows]);
+
+  // totals and ranges for UI indicators
+  const attendanceTotal = (visibleRows || []).length;
+  const attendanceStart = attendanceTotal ? 1 : 0;
+  const attendanceEnd = Math.min(attendanceLimit || 0, attendanceTotal);
 
   // Filtered coaching sessions for the selected coach & period
   const coachingSessions = useMemo(() => {
@@ -270,39 +298,151 @@ export default function StaffAttendance() {
     } catch (e) { return []; }
   }, [gymVisits, periods, selectedCoach, selectedPeriodIndex]);
 
+  // Deduplicated sessions count: count unique (memberId, date) pairs
+  const coachingSessionsCount = useMemo(() => uniqueSessionCount(coachingSessions), [coachingSessions]);
+
+  // totals and ranges for coaching sessions (computed after coachingSessions exists)
+  const coachingTotal = (coachingSessions || []).length;
+  const coachingStart = coachingTotal ? 1 : 0;
+  const coachingEnd = Math.min(coachingLimit || 0, coachingTotal);
+
   const onClock = async () => {
     if (!selected) return;
     setBusy(true); setError('');
+    // refresh attendance state to ensure sign-in status is accurate
     try {
-      // Optimistic local update (so UI is instant)
-      const opt = localCache.addOptimisticAttendance(selected);
-      setRows(prev => {
-        const filtered = (prev || []).filter(r => String(r.id) !== String(opt.id));
-        return [opt, ...filtered];
-      });
+      await load();
+    } catch (e) {
+      // ignore load failures here; we'll still attempt the action
+    }
+    try {
+      const currentlySignedIn = isSignedInToday(selected);
 
-      // Write using the same client helper pattern as gym entries so writes persist
-      // to Firestore when configured (same behavior as gymQuickAppend).
-      try {
-        if (api && typeof api.attendanceQuickAppend === 'function') {
-          await api.attendanceQuickAppend(selected, {});
-        } else if (api && typeof api.clockIn === 'function') {
-          // fallback: clockIn helper
-          await api.clockIn(selected);
-        } else {
-          // As a final fallback, enqueue the legacy /attendance/kiosk request
+      if (!currentlySignedIn) {
+        // Sign in flow (existing behavior)
+        const opt = localCache.addOptimisticAttendance(selected);
+        setRows(prev => {
+          const filtered = (prev || []).filter(r => String(r.id) !== String(opt.id));
+          return [opt, ...filtered];
+        });
+        try {
+          // Prefer the smart append helper which will create a TimeIn row and avoid duplicates
+          if (api && typeof api.attendanceQuickAppend === 'function') {
+            await api.attendanceQuickAppend(selected, {});
+            // poll for authoritative update (TimeIn present for today's row)
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            let confirmed = false;
+            for (let i = 0; i < 8; i++) {
+              try {
+                const res = await api.fetchAttendance(todayYMDManila);
+                const arr = res?.rows || res?.data || [];
+                setRows(arr);
+                // check if there's a today's row for this staff with TimeIn present
+                const today = new Date(); today.setHours(0,0,0,0);
+                const found = (arr || []).some(r => {
+                  try {
+                    const s = String(r?.Staff || r?.staff || r?.staff_name || '').trim();
+                    if (!s || s.toLowerCase() !== String(selected).trim().toLowerCase()) return false;
+                    const d = new Date(r.Date || r.date || r.TimeIn || r.time_in || '');
+                    if (isNaN(d)) return false;
+                    d.setHours(0,0,0,0);
+                    if (d.getTime() !== today.getTime()) return false;
+                    const tin = String(r?.TimeIn || r?.time_in || r?.TimeInISO || r?.timeIn || '').trim();
+                    return !!tin;
+                  } catch (e) { return false; }
+                });
+                if (found) { confirmed = true; break; }
+              } catch (e) { /* ignore and retry */ }
+              await wait(300);
+            }
+            if (!confirmed) {
+              // final authoritative reload (scoped to today)
+              const res2 = await api.fetchAttendance(todayYMDManila);
+              setRows(res2?.rows || res2?.data || []);
+            }
+          } else if (api && typeof api.clockIn === 'function') {
+            await api.clockIn(selected);
+            await load();
+          } else {
+            // fallback: queue the kiosk endpoint for later retry
+            localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
+            await localCache.processQueue();
+            await load();
+          }
+        } catch (err) {
+          console.warn('attendance client write failed, falling back to queue', err && err.message);
           localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
           await localCache.processQueue();
+          await load();
         }
-      } catch (err) {
-        // If client-side write fails, fallback to enqueueing the legacy kiosk POST
-        console.warn('attendance client write failed, falling back to queue', err && err.message);
-        localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected }, tempId: opt.id, collection: 'attendance' });
-        await localCache.processQueue();
-      }
+      } else {
+        // Sign out flow: optimistic update first (set TimeOut on today's open entry), then call clockOut
+        const nowIso = new Date().toISOString();
+        setRows(prev => {
+          if (!prev) return prev;
+          const updated = (prev || []).map(r => {
+            try {
+              const staff = String(r?.Staff || r?.staff || r?.staff_name || '').trim();
+              const dateStr = rowDateYMD(r) || '';
+              const today = todayYMDManila;
+              const to = String(r?.TimeOut || r?.time_out || r?.timeout || '').trim();
+              if (staff === String(selected).trim() && dateStr === today && (!to || to === '-' || to === '—')) {
+                return { ...r, TimeOut: nowIso };
+              }
+            } catch (e) { /* ignore */ }
+            return r;
+          });
+          return updated;
+        });
 
-      // Refresh authoritative list (Firestone or server) so UI reflects final persisted rows
-      await load();
+        try {
+          // Use the smart append helper to close/open rows safely
+          if (api && typeof api.attendanceQuickAppend === 'function') {
+            await api.attendanceQuickAppend(selected, { wantsOut: true });
+            // poll until a TimeOut appears for today's row for this staff
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            let confirmed = false;
+            for (let i = 0; i < 8; i++) {
+              try {
+                const res = await api.fetchAttendance(todayYMDManila);
+                const arr = res?.rows || res?.data || [];
+                setRows(arr);
+                const today = new Date(); today.setHours(0,0,0,0);
+                const found = (arr || []).some(r => {
+                  try {
+                    const s = String(r?.Staff || r?.staff || r?.staff_name || '').trim();
+                    if (!s || s.toLowerCase() !== String(selected).trim().toLowerCase()) return false;
+                    const d = new Date(r.Date || r.date || r.TimeIn || r.time_in || '');
+                    if (isNaN(d)) return false;
+                    d.setHours(0,0,0,0);
+                    if (d.getTime() !== today.getTime()) return false;
+                    const tout = String(r?.TimeOut || r?.time_out || r?.timeout || '').trim();
+                    return !!tout && tout !== '-' && tout !== '—';
+                  } catch (e) { return false; }
+                });
+                if (found) { confirmed = true; break; }
+              } catch (e) { /* ignore and retry */ }
+              await wait(300);
+            }
+            if (!confirmed) {
+              const res2 = await api.fetchAttendance(todayYMDManila);
+              setRows(res2?.rows || res2?.data || []);
+            }
+          } else if (api && typeof api.clockOut === 'function') {
+            await api.clockOut(selected);
+            await load();
+          } else {
+            localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected, wantsOut: true }, collection: 'attendance' });
+            await localCache.processQueue();
+            await load();
+          }
+        } catch (err) {
+          console.warn('attendance clockOut failed, falling back to queue', err && err.message);
+          localCache.enqueueWrite({ method: 'POST', path: '/attendance/kiosk', body: { staff_name: selected, wantsOut: true }, collection: 'attendance' });
+          await localCache.processQueue();
+          await load();
+        }
+      }
     } catch (e) {
       console.error('kiosk error', e);
       setError(e?.message || 'Action failed');
@@ -333,18 +473,18 @@ export default function StaffAttendance() {
         <div style={{ overflowX: 'auto', padding: 8 }}>
           <table className="attendance-table aligned" style={{ width: '100%' }}>
             <thead>
-                <tr>
+              <tr>
                 <th>Date</th>
                 <th>Staff</th>
                 <th>Time In</th>
                 <th>Time Out</th>
-                <th style={{ textAlign: 'center' }}>Total Hours</th>
+                <th style={{ textAlign: 'center' }}>Hours</th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.length === 0 ? (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)' }}>No records.</td></tr>
-              ) : visibleRows.map((r, i) => {
+              ) : visibleRows.slice(0, attendanceLimit).map((r, i) => {
                 const ymd = rowDateYMD(r) || '';
                 const tinDisp = displayTime(r);
                 const toutIso = r?.time_out || r?.TimeOut || r?.timeOut || '';
@@ -353,7 +493,6 @@ export default function StaffAttendance() {
                   : (typeof r?.NoOfHours !== 'undefined' && r?.NoOfHours !== null) ? String(r?.NoOfHours)
                   : (typeof r?.hours !== 'undefined' && r?.hours !== null) ? String(r?.hours)
                   : '—';
-                // determine if this entry is currently "on" (no sign-out) and is for today
                 const toutRaw = String(r?.TimeOut || r?.time_out || r?.timeout || '').trim();
                 const noOut = toutRaw === '' || toutRaw === '-' || toutRaw === '—' || toutRaw === 'null' || typeof toutRaw === 'undefined';
                 const staffName = String(r?.Staff || r?.staff || r?.staff_name || '');
@@ -362,7 +501,7 @@ export default function StaffAttendance() {
                   <tr key={(ymd || '') + '|' + (String(r?.Staff || r?.staff || i))}>
                     <td>{fmtDate(ymd)}</td>
                     <td style={{ fontWeight: 700 }}>
-                          {staffName}{noOut && isToday && <span style={{ marginLeft: 8 }} className="status-badge on">On</span>}
+                      {staffName}{noOut && isToday && <span style={{ marginLeft: 8 }} className="status-badge on">On</span>}
                     </td>
                     <td>{tinDisp}</td>
                     <td>{toutDisp}</td>
@@ -373,6 +512,17 @@ export default function StaffAttendance() {
             </tbody>
           </table>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div className="table-range">{attendanceTotal === 0 ? `Showing 0 of 0` : `Showing ${attendanceStart}–${attendanceEnd} of ${attendanceTotal}`}</div>
+        </div>
+
+        {attendanceTotal > attendanceLimit && (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <button className="button" onClick={() => setAttendanceLimit((n) => (n < attendanceTotal ? Math.min(n + 20, attendanceTotal) : 20))}>
+              {attendanceLimit < attendanceTotal ? `Load ${Math.min(20, attendanceTotal - attendanceLimit)} more` : 'Show less'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Coaching Sessions Panel */}
@@ -392,36 +542,34 @@ export default function StaffAttendance() {
             </select>
           </div>
         </div>
-        <div style={{ paddingTop: 6, paddingBottom: 12, fontWeight: 700, paddingLeft: 8 }}>Sessions: {coachingSessions?.length || 0}</div>
+        <div style={{ paddingTop: 6, paddingBottom: 12, fontWeight: 700, paddingLeft: 8 }}>Sessions: {coachingSessionsCount || 0}</div>
         <div style={{ overflowX: 'auto', padding: 8 }}>
           <table className="attendance-table aligned" style={{ width: '100%' }}>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Nickname</th>
+                <th>Member</th>
                 <th>Time In</th>
                 <th>Time Out</th>
-                <th style={{ textAlign: 'center' }}>Total Hours</th>
+                <th style={{ textAlign: 'center' }}>Hours</th>
                 <th>Focus</th>
               </tr>
             </thead>
             <tbody>
-              {!periods || periods.length === 0 ? (
+              {periods.length === 0 ? (
                 <tr><td colSpan={6}>No periods</td></tr>
               ) : coachingSessions.length === 0 ? (
                 <tr><td colSpan={6}>No sessions for selected coach / period.</td></tr>
               ) : (
-                coachingSessions.map((r, i) => {
+                coachingSessions.slice(0, coachingLimit).map((r, i) => {
                   const ymd = rowDateYMD(r) || '';
                   const tin = displayTime(r);
                   const toutIso = r?.time_out || r?.TimeOut || r?.timeOut || '';
                   const tout = toutIso ? (toutIso.length === 5 ? displayTime({ TimeIn: toutIso }) : fmtTime(toutIso)) : '—';
                   const hours = (typeof r?.TotalHours !== 'undefined' && r?.TotalHours !== null) ? String(r?.TotalHours)
                     : (typeof r?.NoOfHours !== 'undefined' && r?.NoOfHours !== null) ? String(r?.NoOfHours)
-                    : (typeof r?.TotalHours !== 'undefined' && r?.TotalHours !== null) ? String(r?.TotalHours)
                     : (typeof r?.hours !== 'undefined' && r?.hours !== null) ? String(r?.hours)
                     : '—';
-                  // Resolve nickname by looking up members collection (same as Dashboard)
                   const pid = String(r?.MemberID || r?.memberid || r?.member || r?.Member || r?.id || '').trim();
                   const member = (members || []).find(m => String(m?.MemberID || m?.memberid || m?.id || '').trim() === pid) || null;
                   const nick = member ? displayName(member) : (String(r?.NickName || r?.nickname || r?.Member || r?.member || '') || '');
@@ -442,6 +590,18 @@ export default function StaffAttendance() {
         </div>
         {/* Visit detail modal for coaching session rows */}
         <VisitViewModal open={!!selectedVisit} onClose={() => setSelectedVisit(null)} row={selectedVisit} onCheckout={async (entry) => { try { await load(); } catch(e){} setSelectedVisit(null); }} />
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div className="table-range">{coachingTotal === 0 ? `Showing 0 of 0` : `Showing ${coachingStart}–${coachingEnd} of ${coachingTotal}`}</div>
+        </div>
+
+        {coachingTotal > coachingLimit && (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <button className="button" onClick={() => setCoachingLimit((n) => (n < coachingTotal ? Math.min(n + 20, coachingTotal) : 20))}>
+              {coachingLimit < coachingTotal ? `Load ${Math.min(20, coachingTotal - coachingLimit)} more` : 'Show less'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -363,6 +363,51 @@ export async function upsertGymEntry(payload){
   return r;
 }
 
+export async function upsertAttendance(payload){
+  if (!payload) throw new Error('payload required');
+  // Prefer matching by explicit id
+  if (payload.id) {
+    await fb.updateDocument(COLS.attendance, String(payload.id), payload);
+    return { ok: true };
+  }
+  const rows = await fb.getCollection(COLS.attendance);
+  const match = rows.find(r => {
+    try {
+      const staffA = String(r.Staff || r.staff_name || r.staff || '').trim();
+      const staffB = String(payload.Staff || payload.staff_name || payload.staff || '').trim();
+      if (!staffA || !staffB) return false;
+      if (String(staffA).toLowerCase() !== String(staffB).toLowerCase()) return false;
+      const tIn = String(r.TimeIn || r.time_in || '');
+      const pIn = String(payload.TimeIn || payload.time_in || '');
+      const d = String(r.Date || r.date || '');
+      const pd = String(payload.Date || payload.date || '');
+      if (pIn && tIn && pIn === tIn && pd && d && pd === d) return true;
+      if (payload.rowNumber && (String(r.rowNumber || '') === String(payload.rowNumber))) return true;
+      return false;
+    } catch (e) { return false; }
+  }) || null;
+  if (match) {
+    // compute NoOfHours if TimeIn & TimeOut provided but NoOfHours missing
+    try {
+      const pTin = payload.TimeIn || payload.time_in || '';
+      const pTout = payload.TimeOut || payload.time_out || '';
+      if (pTin && pTout && (payload.NoOfHours === undefined || payload.NoOfHours === null || payload.NoOfHours === "")) {
+        const tin = new Date(pTin);
+        const tout = new Date(pTout);
+        if (!isNaN(tin) && !isNaN(tout) && tout > tin) {
+          const hours = (tout - tin) / (1000 * 60 * 60);
+          payload.NoOfHours = Math.round(hours * 100) / 100;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    await fb.updateDocument(COLS.attendance, match.id, payload);
+    return { ok: true, id: match.id };
+  }
+  // otherwise append
+  const r = await fb.addDocument(COLS.attendance, payload);
+  return { ok: true, id: r.id };
+}
+
 export async function fetchProgressTracker() { return { rows: await fb.getCollection(COLS.progress) }; }
 export async function addProgressRow(row) {
   if (!row) throw new Error('row required');
@@ -666,6 +711,82 @@ export async function attendanceQuickAppend(staff, extra = {}){
   if (!staff) throw new Error('staff required');
   const now = new Date().toISOString();
   const date = now.slice(0,10);
+
+  const wantsOut = !!extra.wantsOut;
+
+  // If caller wants to mark TimeOut, try to find an existing open entry for today
+  if (wantsOut) {
+    // Attempt to match by explicit TimeIn+Date if provided in extra
+    const rows = await fb.getCollection(COLS.attendance);
+    let open = null;
+    const matchByProvided = (row) => {
+      try {
+        const s = String(row.Staff || row.staff || row.staff_name || '').trim();
+        if (s !== String(staff).trim()) return false;
+        if (extra.TimeIn && extra.Date) {
+          const tIn = String(row.TimeIn || row.time_in || '');
+          const d = String(row.Date || row.date || '');
+          if (tIn && d && String(extra.TimeIn) === String(tIn) && String(extra.Date) === String(d)) return true;
+        }
+        return false;
+      } catch (e) { return false; }
+    };
+
+    if (extra.TimeIn && extra.Date) {
+      open = rows.find(matchByProvided) || null;
+    }
+
+    if (!open) {
+      // fallback: find today's open entries for staff (no TimeOut)
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todays = rows.filter(r => {
+        try {
+          const s = String(r.Staff || r.staff || r.staff_name || '').trim();
+          if (s !== String(staff).trim()) return false;
+          const d = new Date(r.Date || r.date || r.TimeIn || r.time_in || '');
+          if (isNaN(d)) return false;
+          d.setHours(0,0,0,0);
+          const isToday = d.getTime() === today.getTime();
+          const hasOut = r.TimeOut || r.time_out || r.timeout || '';
+          return isToday && (!hasOut || String(hasOut).trim() === '');
+        } catch (e) { return false; }
+      }).sort((a,b) => {
+        const ta = a.TimeIn || a.time_in || '';
+        const tb = b.TimeIn || b.time_in || '';
+        return String(tb).localeCompare(String(ta));
+      });
+      open = todays.length ? todays[0] : null;
+    }
+
+    if (!open) {
+      // no open entry -> append a checkout-only row
+      const row = { Staff: staff, TimeOut: now, Date: extra.Date || date };
+      if (extra.Notes) row.Notes = extra.Notes;
+      const created = await fb.addDocument(COLS.attendance, row);
+      return { ok: true, id: created.id };
+    }
+
+    // Update the found open entry: set TimeOut and optional fields
+    const update = { TimeOut: now };
+    if (extra.Notes) update.Notes = extra.Notes;
+    // Compute hours from TimeIn -> TimeOut when possible (store as NoOfHours to match attendance schema)
+    try {
+      const timeInVal = open.TimeIn || open.time_in || open.TimeInISO || open.timeIn || '';
+      if (timeInVal) {
+        const tin = new Date(timeInVal);
+        const tout = new Date(now);
+        if (!isNaN(tin) && !isNaN(tout) && tout > tin) {
+          const hours = (tout - tin) / (1000 * 60 * 60);
+          update.NoOfHours = Math.round(hours * 100) / 100;
+        }
+      }
+    } catch (e) { /* ignore compute errors */ }
+    if (extra.TotalHours) update.TotalHours = extra.TotalHours;
+    await fb.updateDocument(COLS.attendance, open.id, update);
+    return { ok: true, id: open.id };
+  }
+
+  // Default: create a new TimeIn row
   const doc = await fb.addDocument(COLS.attendance, { Staff: staff, TimeIn: now, Date: date, ...extra });
   return { ok: true, id: doc.id };
 }
@@ -674,13 +795,14 @@ export async function fetchDashboard() { return { rows: [] }; }
 
 const api = {
   fetchMembers, fetchMembersFresh, addMember, saveMember, updateMember, fetchMemberById, fetchMemberByIdFresh, fetchMemberBundle,
-  fetchAttendance, clockIn, clockOut,
+  fetchAttendance, clockIn, clockOut, attendanceQuickAppend,
   fetchGymEntries, fetchGymEntriesFresh, addGymEntry, gymQuickAppend,
   fetchProgressTracker, addProgressRow,
   fetchPricing, fetchPayments, addPayment, fetchDashboard,
   // new helpers
   fetchMembersRecent, searchMembersByName,
   addPricing, updatePricing, uploadPhoto,
+  upsertAttendance,
 };
 
 export default api;
