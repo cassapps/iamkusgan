@@ -66,6 +66,15 @@ app.use(cors());
 // allow larger JSON payloads (image base64) for local upload proxy
 app.use(express.json({ limit: '20mb' }));
 
+const MANILA_TZ = 'Asia/Manila';
+function ymdManila(d = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: MANILA_TZ }).format(new Date(d));
+  } catch (e) {
+    return (new Date(d)).toISOString().slice(0,10);
+  }
+}
+
 // ensure uploads dir exists and serve it statically for local dev
 const uploadsDir = path.resolve('./uploads');
 try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { /* ignore */ }
@@ -377,10 +386,12 @@ app.post('/attendance/checkin', requireAuth, async (req, res) => {
   if (!staff) return res.status(404).json({ error: 'staff not found' });
 
   const time_in = new Date().toISOString();
+  const dateYMD = ymdManila(time_in);
+  const timeInHH = time_in.slice(11,16);
   db.prepare(`
-    INSERT INTO attendance (staff_id, staff_name, time_in, status)
-    VALUES (?, ?, ?, 'On Duty')
-  `).run(staff.id, staff.full_name, time_in);
+    INSERT INTO attendance (staff_id, staff_name, time_in, Date, TimeIn, status)
+    VALUES (?, ?, ?, ?, ?, 'On Duty')
+  `).run(staff.id, staff.full_name, time_in, dateYMD, timeInHH);
 
   const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();
   // Mirror to Firestore if available (best-effort)
@@ -436,8 +447,8 @@ app.post('/attendance/clock', requireAuth, async (req, res) => {
       }
     }
 
-      // Use today's date (YYYY-MM-DD) and prefer the `Date` column when present
-      const today = new Date().toISOString().slice(0,10);
+      // Use today's date in Manila (YYYY-MM-DD) and prefer the `Date` column when present
+      const today = ymdManila();
       const openRow = db.prepare(
         "SELECT * FROM attendance WHERE ((staff_id = ? AND staff_id IS NOT NULL) OR (Staff = ?)) AND (Date = ? OR date(time_in) = ?) AND (time_out IS NULL OR time_out = '' OR TRIM(time_out) = '') ORDER BY id DESC LIMIT 1"
       ).get(staff ? staff.id : null, identifierStr, today, today);
@@ -480,8 +491,8 @@ app.post('/attendance/clock', requireAuth, async (req, res) => {
     } else {
         const now = new Date();
         const timeIn = now.toISOString();
-        const timeInHHMM = now.toISOString().slice(11,16);
-        const dateYMD = timeIn.slice(0,10);
+        const timeInHHMM = timeIn.slice(11,16);
+        const dateYMD = ymdManila(now);
         // Insert both canonical DB columns and sheet-style columns so frontend can read Date/Staff/TimeIn
         db.prepare('INSERT INTO attendance (staff_id, staff_name, time_in, Date, Staff, TimeIn, status) VALUES (?,?,?,?,?,?,?)')
           .run(staff.id, staff.full_name, timeIn, dateYMD, staff.full_name, timeInHHMM, 'On Duty');
@@ -518,8 +529,8 @@ app.post('/attendance/kiosk', async (req, res) => {
     const name = String(staff_name || staff_identifier || '').trim();
     if (!name) return res.status(400).json({ error: 'staff_name required' });
 
-    // Use today's date (YYYY-MM-DD) and prefer the `Date` column when present
-    const today = new Date().toISOString().slice(0,10);
+    // Use today's date in Manila (YYYY-MM-DD) and prefer the `Date` column when present
+    const today = ymdManila();
     // Try to find an open row by Staff name (case-insensitive) for today
     const openRow = db.prepare(
       "SELECT * FROM attendance WHERE upper(Staff) = upper(?) AND (Date = ? OR date(time_in) = ?) AND (time_out IS NULL OR TRIM(time_out) = '') ORDER BY id DESC LIMIT 1"
@@ -566,7 +577,7 @@ app.post('/attendance/kiosk', async (req, res) => {
     const now = new Date();
     const timeIn = now.toISOString();
     const timeInHHMM = timeIn.slice(11,16);
-    const dateYMD = timeIn.slice(0,10);
+    const dateYMD = ymdManila(now);
     db.prepare('INSERT INTO attendance (time_in, Date, Staff, TimeIn, status, staff_name) VALUES (?,?,?,?,?,?)')
       .run(timeIn, dateYMD, name, timeInHHMM, 'On Duty', name);
     const row = db.prepare('SELECT * FROM attendance ORDER BY id DESC LIMIT 1').get();

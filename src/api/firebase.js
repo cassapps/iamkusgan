@@ -157,7 +157,7 @@ export async function addGymEntry(row) { const r = await fb.addDocument(COLS.gym
 export async function gymQuickAppend(memberId, extra = {}){
   if(!memberId) throw new Error('memberId required');
   const nowIso = new Date().toISOString();
-  const todayYMD = nowIso.slice(0,10);
+  const todayYMD = ymdForDate(nowIso);
 
   // Normalize keys
   const wantsOut = !!extra.wantsOut;
@@ -198,15 +198,12 @@ export async function gymQuickAppend(memberId, extra = {}){
 
   if (!open) {
     // fallback: find today's open entries for member (no TimeOut)
-    const today = new Date(); today.setHours(0,0,0,0);
     const todays = rows.filter(r => {
       try {
         const mid = String(r.MemberID || r.memberId || r.memberid || '').trim();
         if (mid !== String(memberId).trim()) return false;
-        const d = new Date(r.Date || r.date || r.DateTime || r.timestamp || r.TimeIn || '');
-        if (isNaN(d)) return false;
-        d.setHours(0,0,0,0);
-        const isToday = d.getTime() === today.getTime();
+        const rowYmd = ymdForDate(r.Date || r.date || r.DateTime || r.timestamp || r.TimeIn || '');
+        const isToday = String(rowYmd) === String(todayYMD);
         const hasOut = r.TimeOut || r.timeOut || r.Timeout || r.TimeOUT;
         return isToday && (!hasOut || String(hasOut).trim() === '');
       } catch (e) { return false; }
@@ -276,7 +273,7 @@ export async function gymClockIn(memberId, extra = {}){
   });
   if (open) return { ok: true, id: open.id, existed: true };
   const now = new Date().toISOString();
-  const date = now.slice(0,10);
+  const date = ymdForDate(now);
   const res = await addGymEntry({ MemberID: memberId, TimeIn: now, Date: date, ...extra });
   return res;
 }
@@ -639,16 +636,27 @@ export async function updatePricing(id, patch) {
 }
 
 // Attendance: store as docs in attendance collection. Provide basic clockIn/clockOut helpers.
+const MANILA_TZ = 'Asia/Manila';
+function ymdForDate(d) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: MANILA_TZ }).format(new Date(d));
+  } catch (e) {
+    // fallback to ISO date slice
+    try { return new Date(d).toISOString().slice(0,10); } catch (_) { return '' }
+  }
+}
+
 export async function fetchAttendance(dateYMD) {
   const rows = await fb.getCollection(COLS.attendance);
   if (!dateYMD) return { rows };
-  return { rows: rows.filter(r => String(r.Date || '').startsWith(String(dateYMD))) };
+  return { rows: rows.filter(r => String(ymdForDate(r.Date || r.date || r.TimeIn || r.time_in || '')).startsWith(String(dateYMD))) };
 }
 
 export async function clockIn(staff) {
   if (!staff) throw new Error('staff required');
   const t = new Date().toISOString();
-  const doc = await fb.addDocument(COLS.attendance, { Staff: staff, TimeIn: t, Date: t.slice(0,10) });
+  const date = ymdForDate(t);
+  const doc = await fb.addDocument(COLS.attendance, { Staff: staff, TimeIn: t, Date: date });
   return { ok: true, id: doc.id };
 }
 
@@ -665,7 +673,7 @@ export async function clockOut(staff) {
 export async function attendanceQuickAppend(staff, extra = {}){
   if (!staff) throw new Error('staff required');
   const now = new Date().toISOString();
-  const date = now.slice(0,10);
+  const date = ymdForDate(now);
   const doc = await fb.addDocument(COLS.attendance, { Staff: staff, TimeIn: now, Date: date, ...extra });
   return { ok: true, id: doc.id };
 }
