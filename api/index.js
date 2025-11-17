@@ -72,7 +72,7 @@ try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { /* ignore */ 
 app.use('/uploads', express.static(uploadsDir));
 
 /* ---------- AUTH (simple username/password) ---------- */
-app.post('/auth/login', (req, res) => {
+app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'username and password required' });
 

@@ -160,7 +160,7 @@ export default function Dashboard() {
       if (!v) return false;
       const norm = v.toLowerCase();
       if (norm === '-' || norm === '—' || norm === 'n/a' || norm === 'none') return false;
-      return true;
+      return norm.startsWith('coach');
     };
     for (const e of visitsToday) {
       const coachRaw = e.Coach ?? e.coach ?? '';
@@ -386,7 +386,7 @@ export default function Dashboard() {
           if (!v) return false;
           const norm = v.toLowerCase();
           if (norm === '-' || norm === '—' || norm === 'n/a' || norm === 'none') return false;
-          return true;
+          return norm.startsWith('coach');
         };
         for (const e of visitsToday) {
           const coachRaw = e.Coach ?? e.coach ?? '';
