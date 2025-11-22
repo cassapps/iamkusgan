@@ -5,59 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kusgan Fitness Gym</title>
     <meta name="description" content="Kusgan Front Desk" />
-  <link rel="icon" type="image/png" href="/Kusgan/favicon.png" />
-  <link rel="preload" href="data:text/jsx;base64,aW1wb3J0IFJlYWN0IGZyb20gInJlYWN0IjsKaW1wb3J0IFJlYWN0RE9NIGZyb20gInJlYWN0LWRvbS9jbGllbnQiOwppbXBvcnQgeyBIYXNoUm91dGVyIH0gZnJvbSAicmVhY3Qtcm91dGVyLWRvbSI7CmltcG9ydCB7IEdvb2dsZU9BdXRoUHJvdmlkZXIgfSBmcm9tICJAcmVhY3Qtb2F1dGgvZ29vZ2xlIjsKaW1wb3J0IEFwcCBmcm9tICIuL0FwcCI7CmltcG9ydCBFcnJvckJvdW5kYXJ5IGZyb20gIi4vY29tcG9uZW50cy9FcnJvckJvdW5kYXJ5IjsKCi8vIFJ1bnRpbWUgZGlhZ25vc3RpY3M6IGhlbHBzIGRlYnVnIGJsYW5rLXNjcmVlbiBpc3N1ZXMgaW4gZGV2CnRyeSB7CiAgY29uc29sZS5sb2coJ1thcHBdIHN0YXJ0aW5nIG1haW4uanN4JywgeyBiYXNlOiBpbXBvcnQubWV0YS5lbnYuQkFTRV9VUkwsIGhhc0NsaWVudElkOiBCb29sZWFuKGltcG9ydC5tZXRhLmVudi5WSVRFX0dPT0dMRV9DTElFTlRfSUQpIH0pOwogIGNvbnN0IHJvb3RFbCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdyb290Jyk7CiAgaWYgKHJvb3RFbCkgcm9vdEVsLmlubmVySFRNTCA9ICc8ZGl2IHN0eWxlPSJwYWRkaW5nOjIwcHg7Zm9udC1mYW1pbHk6c2Fucy1zZXJpZjtjb2xvcjojMzMzIj5Nb3VudGluZyBLdXNnYW4gYXBwLi4uPC9kaXY+JzsKfSBjYXRjaCAoZSkgewogIC8vIGlnbm9yZQp9CgovLyBSZW5kZXIgd3JhcHBlZCBpbiB0cnkvY2F0Y2ggdG8gc3VyZmFjZSByZW5kZXItdGltZSBlcnJvcnMgaW50byB0aGUgRE9NCnRyeSB7CiAgUmVhY3RET00uY3JlYXRlUm9vdChkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgicm9vdCIpKS5yZW5kZXIoCiAgICA8UmVhY3QuU3RyaWN0TW9kZT4KICAgICAgPEdvb2dsZU9BdXRoUHJvdmlkZXIgY2xpZW50SWQ9e2ltcG9ydC5tZXRhLmVudi5WSVRFX0dPT0dMRV9DTElFTlRfSUQgfHwgIiJ9PgogICAgICAgIDxIYXNoUm91dGVyPgogICAgICAgICAgPEVycm9yQm91bmRhcnk+CiAgICAgICAgICAgIDxBcHAgLz4KICAgICAgICAgIDwvRXJyb3JCb3VuZGFyeT4KICAgICAgICA8L0hhc2hSb3V0ZXI+CiAgICAgIDwvR29vZ2xlT0F1dGhQcm92aWRlcj4KICAgIDwvUmVhY3QuU3RyaWN0TW9kZT4KICApOwp9IGNhdGNoIChlcnIpIHsKICBjb25zb2xlLmVycm9yKCdbYXBwXSByZW5kZXIgZmFpbHVyZScsIGVycik7CiAgY29uc3Qgcm9vdCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdyb290Jyk7CiAgaWYgKHJvb3QpIHsKICAgIHJvb3QuaW5uZXJIVE1MID0gYDxkaXYgc3R5bGU9InBhZGRpbmc6MjBweDtmb250LWZhbWlseTpzYW5zLXNlcmlmO2NvbG9yOiM5MDAiPjxoMj5SZW5kZXIgZXJyb3I8L2gyPjxwcmU+JHtTdHJpbmcoZXJyKX08L3ByZT48L2Rpdj5gOwogIH0KfQo=" as="script" />
-    <!-- Fix for absolute asset paths in shipped bundle: when the bundle uses leading-slash paths
-         (e.g. "/kusgan-logo.png"), browsers will request the host root instead of the
-         project subpath on GitHub Pages. This small runtime shim rewrites image `src`
-         values that start with `/` to include the repo base path (`/Kusgan`) so images
-         resolve to `/Kusgan/<file>` without changing the built bundle. Inserted before
-         the main module so the monkeypatch is active when the bundle runs. -->
-    <script>
-      (function(){
-        try{
-          var PREFIX = '/Kusgan';
-          var imgProto = HTMLImageElement && HTMLImageElement.prototype;
-          if(imgProto){
-            var origSetAttr = imgProto.setAttribute;
-            imgProto.setAttribute = function(name, value){
-              if(name==='src' && typeof value==='string' && value.startsWith('/') && !value.startsWith(PREFIX + '/')){
-                value = PREFIX + value;
-              }
-              return origSetAttr.call(this, name, value);
-            };
-
-            var desc = Object.getOwnPropertyDescriptor(imgProto, 'src');
-            if(desc && desc.set){
-              var origSrcSetter = desc.set;
-              Object.defineProperty(imgProto, 'src', {
-                set: function(v){
-                  var vv = v;
-                  if(typeof vv === 'string' && vv.startsWith('/') && !vv.startsWith(PREFIX + '/')){
-                    vv = PREFIX + vv;
-                  }
-                  return origSrcSetter.call(this, vv);
-                },
-                get: desc.get || function(){ return this.getAttribute('src'); },
-                configurable: true,
-                enumerable: true
-              });
-            }
-          }
-        }catch(e){
-          console.warn('asset-path-shim failed', e && e.message);
-        }
-      })();
-    </script>
-
-    <!-- Static DOM fallback removed — site relies on runtime pricing and React rendering -->
-
-    <script type="module" crossorigin src="/Kusgan/assets/index-MxoFyWhG.js"></script>
-    <link rel="stylesheet" crossorigin href="/Kusgan/assets/index-DRvmUPsg.css">
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="preload" href="/src/main.jsx" as="script" />
   </head>
   <body>
     <div id="root"></div>
 
     <!-- For local dev: load from /src -->
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
