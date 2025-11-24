@@ -4,7 +4,8 @@
   grid-template-columns: repeat(3, 1fr);
   /* Use auto rows so tiles size by content and keep uniform gaps.
      Keep a centered max-width so left/right spacing is equal. */
-  grid-auto-rows: minmax(120px, auto);
+  /* Make tiles square where possible */
+  grid-auto-rows: 1fr;
   gap: 32px; /* unified horizontal + vertical gap between tiles */
   max-width: 1100px;
   margin: 24px auto 0; /* keep a top margin and center horizontally */
@@ -17,6 +18,8 @@
   margin: 0;
   padding: 0;
   width: 100%;
+  /* prefer square tiles */
+  aspect-ratio: 1 / 1;
   min-height: 120px;
   height: auto;
   box-sizing: border-box;
@@ -83,10 +86,83 @@
     grid-template-areas:
       "title"
       "value";
+    aspect-ratio: auto; /* allow normal height on small screens */
   }
   .dashboard-label { grid-area: title; border-radius: 12px 12px 0 0; width: 100%; }
   .dashboard-value { grid-area: value; border-radius: 0 0 12px 12px; width: 100%; }
 }
+
+/* Sidebar collapse styles */
+.sidebar{
+  width: 320px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  border-right: 1px solid var(--sidebar-border);
+  padding: 18px;
+  box-sizing: border-box;
+  transition: width 180ms ease, left 180ms ease;
+  overflow: hidden;
+  display:flex; flex-direction:column;
+}
+.sidebar.collapsed{ width: 64px; }
+.sidebar .brand{ display:flex; align-items:center; gap:12px; position:relative; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.03); }
+.sidebar .brand .sidebar-collapse{ background:transparent; border:0; color:var(--sidebar-text); font-weight:700; font-size:20px; cursor:pointer; width:40px; height:40px; display:flex; align-items:center; justify-content:center; }
+.sidebar .brand .brand-logo{ transition: width 160ms ease; width:140px; height:auto; }
+.sidebar .brand .brand-title{ font-size:1.6rem; font-weight:700; color:var(--sidebar-text); margin-left:6px; }
+
+/* Nav */
+.sidebar .nav{ margin-top:10px; display:flex; flex-direction:column; gap:4px; }
+.nav-link{ color:var(--sidebar-text); text-decoration:none; padding:8px 12px; border-radius:999px; display:flex; gap:10px; align-items:center; transition:background .12s ease,color .12s ease; }
+.nav-link:hover{ background: rgba(255,255,255,0.02); }
+.nav-link .nav-icon{ font-size:20px; width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; }
+.nav-link .nav-label{ display:inline-block; font-weight:600; }
+.nav-link.active{ background: var(--kusgan-magenta-50); color: var(--kusgan-magenta); box-shadow: inset 0 0 0 1px rgba(216,27,138,0.06); }
+.nav-link.active .nav-icon{ background: rgba(216,27,138,0.08); border-radius:8px; }
+
+/* separator between groups */
+.nav-sep{ border: none; height:1px; background: rgba(255,255,255,0.04); margin:12px 4px; }
+
+/* When collapsed: show only icons, center them and provide hover tooltip */
+.sidebar.collapsed .nav-link{ justify-content:center; padding:8px 6px; }
+.sidebar.collapsed .nav-link .nav-label{ display:none; }
+.sidebar.collapsed .nav-link .nav-icon{ font-size:20px; width:36px; height:36px; }
+.sidebar.collapsed .sidebar-footer .logout-btn{ width:44px; height:44px; padding:0; border-radius:10px; }
+
+/* place hamburger above logo and enlarge collapsed logo */
+.sidebar.collapsed .brand{ flex-direction:column; align-items:center; gap:8px; }
+.sidebar .brand .sidebar-collapse{ order:-1; margin-bottom:6px; }
+.sidebar.collapsed .brand-logo{ width:64px !important; }
+.sidebar.collapsed .brand-title{ display:none; }
+
+/* show label tooltip on hover when collapsed */
+.sidebar.collapsed .nav-link{ position:relative; }
+.sidebar.collapsed .nav-link:hover::after{
+  content: attr(data-label);
+  display:block;
+  position:absolute; left:72px; top:50%; transform:translateY(-50%);
+  background:#fff; color:#111; padding:8px 12px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12); white-space:nowrap; z-index:40;
+}
+.sidebar.collapsed .sidebar-footer .logout-btn{ position:relative; }
+.sidebar.collapsed .sidebar-footer .logout-btn .logout-label{ display:none; }
+.sidebar.collapsed .sidebar-footer .logout-btn:hover::after{
+  content: 'Logout'; display:block; position:absolute; left:72px; top:50%; transform:translateY(-50%); background:#fff; color:#111; padding:8px 10px; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.12); white-space:nowrap; z-index:40;
+}
+
+/* Make active highlight square when collapsed */
+.sidebar.collapsed .nav-link.active{ padding:6px; border-radius:10px; }
+.sidebar.collapsed .nav-link.active .nav-icon{ background: var(--kusgan-magenta-50); border-radius:6px; width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; }
+
+/* Logout button door icon centered */
+.logout-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+.logout-btn .logout-icon{ margin:0; width:20px; height:20px; display:inline-block; color:var(--sidebar-text); }
+.sidebar.collapsed .sidebar-footer{ display:flex; align-items:center; justify-content:center; }
+.sidebar.collapsed .sidebar-footer .logout-label{ display:none; }
+.sidebar .logout-icon{ margin-right:8px; }
+
+/* Table responsiveness: allow horizontal scroll on narrow screens */
+table.aligned, table.attendance-table, table.payments-table{ display:block; width:100%; overflow:auto; -webkit-overflow-scrolling:touch; white-space:nowrap; }
+table.aligned th, table.aligned td, table.attendance-table th, table.attendance-table td{ white-space:nowrap; }
+
 /* Dashboard tile layout styles */
 .dashboard-content {
   background: #f7f8fa;
@@ -263,9 +339,27 @@ body{
 
 /* Right side (scrollable) */
 .main-content{
-  flex:1; margin-left:260px; height:100vh;
+  flex:1; margin-left:320px; height:100vh;
   overflow-y:auto; padding:20px; background:var(--light-bg);
+  transition: margin-left 180ms ease;
 }
+
+/* When sidebar is collapsed reduce the left offset of main content */
+.sidebar.collapsed ~ .main-content{ margin-left:64px; }
+
+/* Topbar (fixed) */
+.topbar{ position:fixed; top:0; left:0; right:0; height:52px; background:var(--light-surface); border-bottom:1px solid var(--light-border); display:flex; align-items:center; z-index:60; }
+.topbar-inner{ width:100%; margin-left:0; display:flex; align-items:center; gap:10px; padding:0 12px; box-sizing:border-box; transition:none; padding-left:64px; }
+.topbar-left{ display:flex; align-items:center; gap:8px; }
+.topbar-hamburger{ width:40px; height:36px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--light-border); background:var(--light-surface); cursor:pointer; position:absolute; left:12px; top:8px; z-index:70; }
+.sidebar.collapsed ~ .topbar .topbar-inner{ padding-left:64px; }
+.topbar-logo{ width:34px; height:34px; display:block; border-radius:6px; }
+.topbar-title{ font-weight:800; font-size:1rem; color:var(--text); display:none; }
+.sidebar.collapsed ~ .topbar .topbar-title{ display:block; }
+.topbar-right{ margin-left:auto; font-weight:600; color:var(--muted); }
+
+/* ensure main content sits below the topbar */
+.main-content{ padding-top:72px; }
 
 /* ---------- Sidebar content ---------- */
 .brand{
@@ -508,6 +602,32 @@ table.aligned{ table-layout:fixed; margin-bottom:40px; }
   max-width: none;
   min-width: 0;
   display:flex; flex-direction:column;
+}
+
+/* Responsive adjustments for member detail card (stack on small screens) */
+@media (max-width: 1000px) {
+  .member-card{ flex-direction:row; gap:12px; }
+  .member-photo .photo-box{ width: 260px; max-width: 40%; aspect-ratio: 3 / 4; }
+  .member-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .member-grid .lastname { grid-column: 1 / span 2; }
+}
+
+@media (max-width: 720px) {
+  /* Stack photo above info on phones and small tablets */
+  .member-card{ flex-direction: column; align-items: stretch; }
+  .member-photo{ width:100%; display:block; }
+  .member-photo .photo-box{ width:100%; max-width:100%; aspect-ratio: 4 / 3; margin-bottom:12px; }
+  .member-info{ width:100%; }
+  /* Collapse grid to single column for clarity on small screens */
+  .member-grid{ grid-template-columns: 1fr; gap:12px; }
+  .member-grid .cell{ grid-column: auto !important; }
+  .member-actions{ grid-template-columns: repeat(2, 1fr); gap:10px; }
+}
+
+@media (min-width: 721px) and (max-width: 900px) {
+  /* For mid-sized screens (small tablets), make a 2-column grid */
+  .member-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .member-photo .photo-box{ width: 320px; max-width: 45%; }
 }
 
 /* ---------- Member Detail (6-col grid) ---------- */

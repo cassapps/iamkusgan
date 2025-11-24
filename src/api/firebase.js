@@ -3,6 +3,7 @@
 // the existing Sheets API to make switching imports easier.
 
 import fb from '../lib/firebase';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // Collections mapping
 const COLS = {
@@ -404,26 +405,8 @@ export async function fetchMembersRecent({ limit = 200, days = 90 } = {}) {
       fb.getCollection(COLS.gymEntries),
     ]);
   } catch (e) {
-    // If Firestore isn't available or query failed, we'll fallback to server-side endpoints below
+    // If Firestore isn't available or query failed, return empty arrays.
     membersRaw = paymentsRaw = entriesRaw = [];
-  }
-
-  // If Firestore returned no members (or very few), fallback to the local API server which
-  // is the authoritative sqlite-backed source. This avoids missing rows when mirroring
-  // to Firestore hasn't completed.
-  if ((!membersRaw || membersRaw.length === 0) && typeof fetch === 'function') {
-    try {
-      const [mResp, pResp, gResp] = await Promise.all([
-        fetch('/api/members'),
-        fetch('/api/payments'),
-        fetch('/api/gymEntries')
-      ]);
-      if (mResp && mResp.ok) membersRaw = await mResp.json();
-      if (pResp && pResp.ok) paymentsRaw = await pResp.json();
-      if (gResp && gResp.ok) entriesRaw = await gResp.json();
-    } catch (e) {
-      // ignore fallback errors and continue with whatever we have
-    }
   }
 
   const members = (membersRaw || []).map(m => ({ ...m }));
@@ -559,7 +542,34 @@ export async function insertRow(sheetName, row) {
   return { ok: true, id: r.id };
 }
 
+// Respect VITE_API_URL for production/staging API overrides. If VITE_API_URL is set,
+// attempt to use that server's /reports/payments for consistency (it will use admin creds).
 export async function fetchPayments() { return { rows: await fb.getCollection(COLS.payments) }; }
+export async function fetchPaymentsReport(from = '', to = '') {
+  // Always read payments directly from Firestore (production) and return rows for
+  // client-side calculations. Do not call local `/api` or server report endpoints.
+  const rows = await fb.getCollection(COLS.payments);
+  // Optionally filter by Date range if 'from'/'to' provided (ISO YYYY-MM-DD).
+  if (!from && !to) return { rows };
+  const parseYmd = (v) => {
+    if (!v) return null;
+    try {
+      // Firestore stored values may be string dates or Timestamps; normalize
+      if (v && typeof v === 'object' && v.toDate) return v.toDate();
+      return new Date(String(v));
+    } catch (e) { return null; }
+  };
+  const fromD = from ? new Date(from) : null;
+  const toD = to ? new Date(to) : null;
+  const filtered = (rows || []).filter(r => {
+    const d = parseYmd(r.Date || r.date || r.createdAt || r.timestamp);
+    if (!d) return false;
+    if (fromD && d < fromD) return false;
+    if (toD && d > toD) return false;
+    return true;
+  });
+  return { rows: filtered };
+}
 export async function addPayment(payload) { const r = await fb.addDocument(COLS.payments, payload); return { ok: true, id: r.id }; }
 
 // Upload photo helpers (client). Uses Firebase Storage via fb.uploadFile

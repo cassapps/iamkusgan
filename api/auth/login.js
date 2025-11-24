@@ -16,9 +16,9 @@ let adminInitialized = false;
 // The actual bcrypt hash will be computed at startup so it's always correct.
 const DEFAULT_FRONTDESK_PASSWORD = 'Kusgan2025!';
 const DEFAULT_FRONTDESK_HASH = bcrypt.hashSync(DEFAULT_FRONTDESK_PASSWORD, 10);
-// Development fallback for a single admin user to allow quick access when
-// environment variables or Firestore are not configured. This mirrors the
-// existing insecure frontdesk fallback used for quick testing only.
+// Development-only fallback values. These are intentionally insecure and
+// must never be enabled in production. Control via `NODE_ENV` and
+// `ENABLE_INSECURE_FALLBACK` environment variables.
 const DEFAULT_ADMIN_USERNAME = 'johannaa';
 const DEFAULT_ADMIN_PASSWORD = 'JohannaA';
 const DEFAULT_ADMIN_HASH = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 10);
@@ -102,27 +102,36 @@ export default async function handler(req, res) {
       }
     }
 
-    // Development shortcut: allow the baked-in johannaa admin account when no
-    // env vars / Firestore are available. This is intentionally insecure and
-    // only for quick testing — prefer setting ADMIN_USERNAME/ADMIN_PASSWORD
-    // or configuring firebase-admin in production.
-    if (String(username).trim() === DEFAULT_ADMIN_USERNAME && bcrypt.compareSync(String(password), DEFAULT_ADMIN_HASH)) {
-      const token = `local-token-${Date.now()}`;
-      const user = { username: DEFAULT_ADMIN_USERNAME, role: 'admin', id: DEFAULT_ADMIN_USERNAME };
-      try { console.log('auth/login: matched DEFAULT_ADMIN fallback (insecure)'); } catch (e) {}
-      res.status(200).json({ ok: true, token, user });
-      return;
+    // Only allow the baked-in admin in non-production when explicitly enabled.
+    const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+    const enableInsecureFallback = String(process.env.ENABLE_INSECURE_FALLBACK || 'false').toLowerCase() === 'true';
+    if (nodeEnv !== 'production' && enableInsecureFallback) {
+      if (String(username).trim() === DEFAULT_ADMIN_USERNAME && bcrypt.compareSync(String(password), DEFAULT_ADMIN_HASH)) {
+        const token = `local-token-${Date.now()}`;
+        const user = { username: DEFAULT_ADMIN_USERNAME, role: 'admin', id: DEFAULT_ADMIN_USERNAME };
+        try { console.log('auth/login: matched DEFAULT_ADMIN fallback (dev-only)'); } catch (e) {}
+        res.status(200).json({ ok: true, token, user });
+        return;
+      }
     }
 
-    // Otherwise keep the old frontdesk behavior
-    // Only support the 'frontdesk' user for now
-    if (String(username).trim() === 'frontdesk' && String(password) === String(expected)) {
-      // Simple token — not a JWT. Sufficient for client session identification.
-      const token = `local-token-${Date.now()}`;
-      const user = { username: 'frontdesk', role: 'staff', id: 'frontdesk' };
-      try { console.log('auth/login: matched FRONTDESK_PASSWORD fallback'); } catch (e) {}
-      res.status(200).json({ ok: true, token, user });
-      return;
+    // Support the 'frontdesk' password only when explicitly configured or
+    // when running in a non-production environment with insecure fallbacks enabled.
+    if (String(username).trim() === 'frontdesk') {
+      if (expected && String(password) === String(expected)) {
+        const token = `local-token-${Date.now()}`;
+        const user = { username: 'frontdesk', role: 'staff', id: 'frontdesk' };
+        try { console.log('auth/login: matched FRONTDESK_PASSWORD'); } catch (e) {}
+        res.status(200).json({ ok: true, token, user });
+        return;
+      }
+      if (nodeEnv !== 'production' && enableInsecureFallback && bcrypt.compareSync(String(password), DEFAULT_FRONTDESK_HASH)) {
+        try { console.warn('auth/login: using DEFAULT_FRONTDESK_HASH; dev-only fallback'); } catch (e) {}
+        const token = `local-token-${Date.now()}`;
+        const user = { username: 'frontdesk', role: 'staff', id: 'frontdesk' };
+        res.status(200).json({ ok: true, token, user });
+        return;
+      }
     }
 
     // Fallback: if firebase admin is available, check Firestore `users` collection
@@ -146,28 +155,17 @@ export default async function handler(req, res) {
         console.error('auth/login firestore check error', e && (e.stack || e.message || e));
       }
     }
-
-    // If no env and no Firestore, support a default hard-coded password (dev fallback)
-    // This fallback is enabled by default, but can be disabled by setting
-    // ENABLE_INSECURE_FALLBACK=false in the environment.
-    try {
-      if (!expected || expected === '') {
-        const enableFallback = (String(process.env.ENABLE_INSECURE_FALLBACK || 'true').toLowerCase() !== 'false');
-        if (enableFallback) {
-          // Compare the provided password with the baked-in bcrypt hash
-          if (String(username).trim() === 'frontdesk' && bcrypt.compareSync(String(password), DEFAULT_FRONTDESK_HASH)) {
-            try { console.warn('auth/login: using DEFAULT_FRONTDESK_HASH; this is insecure and intended for quick testing only'); } catch (e) {}
-            const token = `local-token-${Date.now()}`;
-            const user = { username: 'frontdesk', role: 'staff', id: 'frontdesk' };
-            res.status(200).json({ ok: true, token, user });
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      /* ignore */
+    // If we're running in production and the server isn't configured to
+    // authenticate against Firestore nor has an ADMIN env pair, fail loudly
+    // so the deploy owner can fix configuration instead of relying on
+    // insecure fallbacks.
+    if (nodeEnv === 'production' && !adminInitialized && !(adminUsername && adminPassword)) {
+      try { console.error('auth/login: server not configured for Firestore authentication'); } catch (e) {}
+      res.status(503).json({ error: 'Server not configured for Firestore auth. Set ADMIN_USERNAME/ADMIN_PASSWORD or configure Firebase Admin (service account).' });
+      return;
     }
 
+    // Final fallback: invalid credentials
     res.status(401).json({ error: 'Invalid username or password' });
   } catch (err) {
     console.error('auth/login error', err && err.stack ? err.stack : err);

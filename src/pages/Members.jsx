@@ -1,7 +1,7 @@
 // src/pages/Members.jsx
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import useSWR from 'swr';
-import { FixedSizeList as List } from 'react-window';
+import { List } from 'react-window';
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import localCache from '../lib/localCache.js';

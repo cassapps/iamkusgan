@@ -263,31 +263,14 @@ app.put('/users/self/password', requireAuth, (req, res) => {
 });
 
 // List users (admin-only)
-    const jsonEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    const b64Env = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_B64;
-    if (jsonEnv || b64Env) {
-      try {
-        let svc = null;
-        if (b64Env) {
-          svc = JSON.parse(Buffer.from(String(b64Env), 'base64').toString('utf8'));
-        } else {
-          svc = JSON.parse(jsonEnv);
-        }
-        const adminInit = { credential: admin.credential.cert(svc) };
-        if (process.env.FIREBASE_STORAGE_BUCKET) adminInit.storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
-        admin.initializeApp(adminInit);
-        adminReady = true;
-        console.log('firebase-admin initialized for API server (GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64)');
-      } catch (e) {
-        console.warn('firebase-admin failed to initialize from GOOGLE_APPLICATION_CREDENTIALS_JSON/_B64:', e && e.message);
-      }
-        status: row.status,
-        created_at: row.created_at || created_at
-      }, { merge: true });
-    } catch (e) { console.warn('Failed to mirror member to Firestore', e && e.message); }
+app.get('/users', requireAuth, (req, res) => {
+  try {
+    const rows = db.prepare('SELECT id, username, role, created_at, active FROM users ORDER BY id DESC LIMIT 500').all();
+    return res.json(rows);
+  } catch (e) {
+    console.error('GET /users error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
   }
-
-  res.status(201).json(row);
 });
 
 // PUT /members/:id - update member (server-side fallback)
@@ -788,6 +771,208 @@ app.get('/reports/product-usage', requireAuth, (req, res) => {
     return res.json(rows);
   } catch (e) {
     console.error('GET /reports/product-usage error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+// ---- Lightweight reporting endpoints (payments, coaching sessions, checkins)
+// These operate directly on the local SQLite DB so they work reliably in production
+// regardless of Firestore mirroring. Query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get('/reports/payments', async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim() || null;
+    const to = String(req.query.to || '').trim() || null;
+    // Normalize dates to YYYY-MM-DD when provided; SQLite date(...) will handle strings.
+    const params = [];
+    let where = '';
+    if (from && to) {
+      where = "WHERE date(COALESCE(pay_date, Date, DatePaid, created_at)) BETWEEN ? AND ?";
+      params.push(from, to);
+    } else if (from) {
+      where = "WHERE date(COALESCE(pay_date, Date, DatePaid, created_at)) >= ?";
+      params.push(from);
+    } else if (to) {
+      where = "WHERE date(COALESCE(pay_date, Date, DatePaid, created_at)) <= ?";
+      params.push(to);
+    }
+
+    // If firebase-admin is configured, prefer Firestore as authoritative source
+    if (adminReady) {
+      try {
+        const dbf = admin.firestore();
+        const snap = await dbf.collection('payments').get();
+        const docs = [];
+        snap.forEach(d => docs.push({ id: d.id, ...(d.data() || {}) }));
+        const parseToYmd = (v) => {
+          if (!v) return null;
+          try {
+            if (typeof v === 'object' && v !== null && typeof v.toDate === 'function') {
+              const dt = v.toDate();
+              return dt.toISOString().slice(0,10);
+            }
+            if (typeof v === 'object' && v.seconds) {
+              const dt = new Date(Number(v.seconds) * 1000);
+              return dt.toISOString().slice(0,10);
+            }
+            const dt = new Date(String(v));
+            if (isNaN(dt)) return null;
+            return dt.toISOString().slice(0,10);
+          } catch (e) { return null; }
+        };
+        const rows = docs.filter(d => {
+          const ymd = parseToYmd(d.pay_date || d.Date || d.date || d.DatePaid || d.timestamp || d.createdAt || d.created_at);
+          if (!ymd) return false;
+          if (from && to) return (ymd >= from && ymd <= to);
+          if (from) return (ymd >= from);
+          if (to) return (ymd <= to);
+          return true;
+        }).sort((a,b) => (b.id || '').localeCompare(a.id || '')).slice(0, 500);
+        const total = rows.reduce((acc, p) => acc + (parseFloat(p.amount || p.Cost || 0) || 0), 0);
+        return res.json({ count: rows.length, total, rows });
+      } catch (e) {
+        console.warn('Firestore payments report failed, falling back to SQLite', e && e.message);
+      }
+    }
+
+    // Build safe SQL: verify which columns exist in the payments table to avoid SQLite 'no such column' errors
+    const tableInfo = db.prepare("PRAGMA table_info('payments')").all();
+    const cols = (tableInfo || []).map(c => String(c.name));
+    const dateCols = ['pay_date', 'Date', 'date', 'DatePaid', 'created_at', 'createdAt'].filter(c => cols.includes(c));
+    const amtCols = ['amount', 'Amount', 'Cost', 'cost'].filter(c => cols.includes(c));
+    const memberCols = ['MemberID','member_id','memberId','memberid','member'].filter(c => cols.includes(c));
+    const dateExpr = dateCols.length ? `date(COALESCE(${dateCols.join(',')}))` : null;
+    const amtExpr = amtCols.length ? `COALESCE(${amtCols.join(',')}, 0)` : '0';
+    const countSql = `SELECT COUNT(*) AS count, SUM(CAST(${amtExpr} AS REAL)) AS total FROM payments ${where}`;
+    const rowsFields = ['id'].concat(['pay_date','Date','DatePaid','MemberID','member_id','member_name','Cost','amount','Mode','Particulars'].filter(f => cols.includes(f)));
+    const rowsSql = `SELECT ${rowsFields.join(', ')} FROM payments ${where} ORDER BY id DESC LIMIT 500`;
+    const countRow = db.prepare(countSql).get(...params);
+    const rows = db.prepare(rowsSql).all(...params);
+    return res.json({ count: Number(countRow.count || 0), total: Number(countRow.total || 0), rows });
+  } catch (e) {
+    console.error('/reports/payments error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+app.get('/reports/coaching-sessions', async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim() || null;
+    const to = String(req.query.to || '').trim() || null;
+    const params = [];
+    let whereDate = '';
+    if (from && to) { whereDate = "AND date(COALESCE(Date, date, DateTime)) BETWEEN ? AND ?"; params.push(from, to); }
+    else if (from) { whereDate = "AND date(COALESCE(Date, date, DateTime)) >= ?"; params.push(from); }
+    else if (to) { whereDate = "AND date(COALESCE(Date, date, DateTime)) <= ?"; params.push(to); }
+
+    // If firebase-admin is configured, prefer Firestore
+    if (adminReady) {
+      try {
+        const dbf = admin.firestore();
+        const snap = await dbf.collection('gymEntries').get();
+        const docs = [];
+        snap.forEach(d => docs.push({ id: d.id, ...(d.data() || {}) }));
+        const toYmd = (v) => {
+          if (!v) return null;
+          try {
+            if (typeof v === 'object' && v !== null && typeof v.toDate === 'function') return v.toDate().toISOString().slice(0,10);
+            if (typeof v === 'object' && v.seconds) return new Date(Number(v.seconds) * 1000).toISOString().slice(0,10);
+            const dt = new Date(String(v)); if (isNaN(dt)) return null; return dt.toISOString().slice(0,10);
+          } catch (e) { return null; }
+        };
+        const filtered = docs.filter(d => {
+          const c = String(d.Coach || d.coach || '').trim();
+          if (!c) return false;
+          const ymd = toYmd(d.Date || d.date || d.DateTime || d.timeIn || d.TimeIn || d.timestamp);
+          if (!ymd) return false;
+          if (from && to) return (ymd >= from && ymd <= to);
+          if (from) return (ymd >= from);
+          if (to) return (ymd <= to);
+          return true;
+        });
+        const breakdown = Object.entries(filtered.reduce((acc, d) => { const coach = String(d.Coach || d.coach || '').trim(); acc[coach] = (acc[coach] || 0) + 1; return acc; }, {})).map(([coach, count]) => ({ coach, count })).sort((a,b) => b.count - a.count).slice(0,200);
+        return res.json({ count: filtered.length, breakdown });
+      } catch (e) {
+        console.warn('Firestore coaching-sessions report failed, falling back to SQLite', e && e.message);
+      }
+    }
+
+    // Count entries that have a non-empty Coach field (SQLite fallback)
+    // Build safe SQL by checking table columns
+    const gyTableInfo = db.prepare("PRAGMA table_info('gymEntries')").all();
+    const gyCols = (gyTableInfo || []).map(c => String(c.name));
+    const coachCols = ['Coach','coach'].filter(c => gyCols.includes(c));
+    const dateCols2 = ['Date','date','DateTime','dateTime','TimeIn','timein'].filter(c => gyCols.includes(c));
+    const coachExpr = coachCols.length ? `TRIM(COALESCE(${coachCols.join(', ')} , '')) <> ''` : "TRIM(COALESCE(Coach, coach, '')) <> ''";
+    const dateExpr2 = dateCols2.length ? `date(COALESCE(${dateCols2.join(', ')}))` : null;
+    const whereDateSql = dateExpr2 ? `${whereDate.replace('date(COALESCE(Date, date, DateTime))', dateExpr2)}` : whereDate;
+    const countRow = db.prepare(`SELECT COUNT(*) AS count FROM gymEntries WHERE ${coachExpr} ${whereDateSql}`).get(...params);
+    const breakdown = db.prepare(`SELECT TRIM(COALESCE(${coachCols.join(', ')})) AS coach, COUNT(*) AS count FROM gymEntries WHERE ${coachExpr} ${whereDateSql} GROUP BY coach ORDER BY count DESC LIMIT 200`).all(...params);
+    return res.json({ count: Number(countRow.count || 0), breakdown });
+  } catch (e) {
+    console.error('/reports/coaching-sessions error', e && e.message);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+app.get('/reports/checkins', async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim() || null;
+    const to = String(req.query.to || '').trim() || null;
+    const params = [];
+    let whereDate = '';
+    if (from && to) { whereDate = "WHERE date(COALESCE(Date, date, DateTime, TimeIn)) BETWEEN ? AND ?"; params.push(from, to); }
+    else if (from) { whereDate = "WHERE date(COALESCE(Date, date, DateTime, TimeIn)) >= ?"; params.push(from); }
+    else if (to) { whereDate = "WHERE date(COALESCE(Date, date, DateTime, TimeIn)) <= ?"; params.push(to); }
+
+    if (adminReady) {
+      try {
+        const dbf = admin.firestore();
+        const snap = await dbf.collection('gymEntries').get();
+        const docs = [];
+        snap.forEach(d => docs.push({ id: d.id, ...(d.data() || {}) }));
+        const toYmd = (v) => {
+          if (!v) return null;
+          try {
+            if (typeof v === 'object' && v !== null && typeof v.toDate === 'function') return v.toDate().toISOString().slice(0,10);
+            if (typeof v === 'object' && v.seconds) return new Date(Number(v.seconds) * 1000).toISOString().slice(0,10);
+            const dt = new Date(String(v)); if (isNaN(dt)) return null; return dt.toISOString().slice(0,10);
+          } catch (e) { return null; }
+        };
+        const filtered = docs.filter(d => {
+          const ymd = toYmd(d.Date || d.date || d.DateTime || d.TimeIn || d.timeIn || d.timestamp);
+          if (!ymd) return false;
+          if (from && to) return (ymd >= from && ymd <= to);
+          if (from) return (ymd >= from);
+          if (to) return (ymd <= to);
+          return true;
+        });
+        const grouped = {};
+        for (const d of filtered) {
+          const ymd = toYmd(d.Date || d.date || d.DateTime || d.TimeIn || d.timeIn || d.timestamp);
+          if (!ymd) continue;
+          grouped[ymd] = grouped[ymd] || { day: ymd, checkins: 0, uniqueSet: new Set() };
+          grouped[ymd].checkins += 1;
+          const mid = String(d.MemberID || d.member_id || d.memberid || d.id || '').trim();
+          if (mid) grouped[ymd].uniqueSet.add(mid);
+        }
+        const rows = Object.values(grouped).map(r => ({ day: r.day, checkins: r.checkins, unique_visitors: r.uniqueSet.size })).sort((a,b) => a.day.localeCompare(b.day));
+        return res.json({ rows });
+      } catch (e) {
+        console.warn('Firestore checkins report failed, falling back to SQLite', e && e.message);
+      }
+    }
+
+    // Build safe SQL for checkins (detect which columns exist and use them)
+    const gyTableInfo2 = db.prepare("PRAGMA table_info('gymEntries')").all();
+    const gyCols2 = (gyTableInfo2 || []).map(c => String(c.name));
+    const dateCols3 = ['Date','date','DateTime','TimeIn','timeIn','time_in'].filter(c => gyCols2.includes(c));
+    const memberCols2 = ['MemberID','member_id','memberId','memberid','member'].filter(c => gyCols2.includes(c));
+    const dateExpr3 = dateCols3.length ? `date(COALESCE(${dateCols3.join(', ')}))` : "date(COALESCE(Date, date, DateTime, TimeIn))";
+    const memberExpr2 = memberCols2.length ? `TRIM(COALESCE(${memberCols2.join(', ')}))` : `TRIM(COALESCE(MemberID, member_id, ''))`;
+    const rows = db.prepare(`SELECT ${dateExpr3} AS day, COUNT(*) AS checkins, COUNT(DISTINCT ${memberExpr2}) AS unique_visitors FROM gymEntries ${whereDate} GROUP BY day ORDER BY day`).all(...params);
+    return res.json({ rows });
+  } catch (e) {
+    console.error('/reports/checkins error', e && e.message);
     return res.status(500).json({ error: 'server error' });
   }
 });

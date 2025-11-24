@@ -23,6 +23,16 @@ export function ensureFirebase() {
       try { app = getApp(); } catch (e) { /* fall through to init below */ }
     }
     if (!app) {
+      // Debug: surface whether the essential env vars are present (mask sensitive parts)
+      try {
+        const hasProject = !!clientConfig.projectId;
+        const apiKey = String(clientConfig.apiKey || '');
+        const maskedKey = apiKey ? apiKey.slice(0,4) + '...' + apiKey.slice(-4) : '(none)';
+        // Log to the browser console so you can verify values without exposing full secrets in source.
+        // This log is intentionally minimal and masks the API key.
+        // eslint-disable-next-line no-console
+        console.info('[firebase] ensureFirebase: projectId=', hasProject ? clientConfig.projectId : '(missing)', ' apiKey=', maskedKey);
+      } catch (e) { /* ignore logging errors */ }
       if (!clientConfig.projectId) throw new Error('Missing Firebase config in VITE_FIREBASE_PROJECT_ID');
       app = initializeApp(clientConfig);
     }

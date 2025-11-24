@@ -209,15 +209,17 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
     return age >= 60;
   }, [birthDate]);
 
-  // Manila hour detection and window flags
-  const { manilaHour, isOffPeakWindow, isDailyWindow } = useMemo(() => {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: MANILA_TZ, hour12: false, hour: "2-digit" }).formatToParts(new Date());
+  // Manila minute detection and window flags
+  // offpeak: 06:00 (360) .. 15:30 (930) exclusive end
+  // peak: 15:00 (900) .. 23:59 (1439) inclusive
+  const { manilaHour, manilaMinute, isOffPeakWindow, isPeakWindow } = useMemo(() => {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: MANILA_TZ, hour12: false, hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
     const hour = Number(parts.find((p) => p.type === "hour")?.value || "0");
-    // Off-peak window: 06:00 - 14:59 (6am-3pm exclusive)
-    const off = hour >= 6 && hour < 15;
-    // Daily peak window: 15:00 - 21:59 (3pm-10pm exclusive)
-    const daily = hour >= 15 && hour < 22;
-    return { manilaHour: hour, isOffPeakWindow: off, isDailyWindow: daily };
+    const minute = Number(parts.find((p) => p.type === "minute")?.value || "0");
+    const minutes = hour * 60 + minute;
+    const off = minutes >= 6 * 60 && minutes < (15 * 60 + 30); // 06:00 - 15:30 (exclusive end)
+    const peak = minutes >= (15 * 60) && minutes <= (23 * 60 + 59); // 15:00 - 23:59
+    return { manilaHour: hour, manilaMinute: minute, isOffPeakWindow: off, isPeakWindow: peak };
   }, []);
 
   // Filter pricing based on eligibility rules
@@ -229,6 +231,7 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
       const isDiscounted = /(student|senior|discount|disc)/i.test(name);
       const isOffPeak = /off\s*-?\s*peak|offpeak/i.test(name);
       const isDaily = /\bdaily\b|daily\s*pass|1[- ]?day/i.test(name);
+      const timeWindowRaw = String(p.time_window || p.TimeWindow || p['Time Window'] || '').trim().toLowerCase();
       const flags = getFlags(p);
 
       // Discount items: require eligibility
@@ -259,6 +262,22 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
       const isDailyCoachOnly = isDaily && flags.coach && !flags.gym;
       const isDailyBundle = isDaily && flags.gym && flags.coach;
 
+      // Enforce coach-only products visibility: coach-only items require an active gym membership
+      if (!flags.gym && flags.coach && !memberHasActiveMembership) return false;
+
+      // Time-window enforcement: prefer canonical `time_window` field when present
+      if (timeWindowRaw) {
+        if (timeWindowRaw === 'offpeak' && !isOffPeakWindow) return false;
+        if ((timeWindowRaw === 'peak' || timeWindowRaw === 'daily') && !isPeakWindow) return false;
+        // 'any' or 'all' are always allowed
+      } else {
+        // Fallback: legacy name-based rules
+        // Off-peak items only visible in off-peak window
+        if (isOffPeak && !isOffPeakWindow) return false;
+        // Non-offpeak daily (regular daily) only visible in peak window
+        if (isDaily && !isOffPeak && !isPeakWindow) return false;
+      }
+
       // Apply rules per type:
       // - Daily gym-only: hide only if member has active gym membership
       if (isDailyGymOnly && memberHasActiveMembership) return false;
@@ -267,17 +286,9 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
       // - Daily bundle: hide if either gym OR coach active
       if (isDailyBundle && (memberHasActiveMembership || coachActiveNow)) return false;
 
-      // Off-peak items only visible in off-peak window
-      // Exception: coach-only daily passes are available anytime (they're coach sessions)
-      if (isOffPeak && !isOffPeakWindow && !(isDaily && flags.coach && !flags.gym)) return false;
-
-      // Non-offpeak daily (regular daily) only visible in daily window
-      // Exception: coach-only daily passes are available anytime
-      if (isDaily && !isOffPeak && !isDailyWindow && !(flags.coach && !flags.gym)) return false;
-
       return true;
     });
-  }, [pricing, isStudent, isSenior, isOffPeakWindow, isDailyWindow, membershipEnd, coachEnd]);
+  }, [pricing, isStudent, isSenior, isOffPeakWindow, isPeakWindow, membershipEnd, coachEnd]);
 
   // Clear selection if it becomes ineligible due to filters
   useEffect(() => {
@@ -411,19 +422,41 @@ export default function PaymentModal({ open, onClose, memberId, onSaved, members
         return;
       }
 
-      // Time-window checks (Manila)
-      if (isDailyItem && !isOffPeakItem) {
-        if (!isDailyWindow) {
-          setError('Daily pass only available 3pm-10pm (Manila time)');
+      // Coach-only items require an active gym membership
+      if (flags.coach && !flags.gym && !memberHasActiveMembership) {
+        setError('Coach pass requires an active Gym Membership');
+        setBusy(false);
+        return;
+      }
+
+      // Time-window checks (Manila) - prefer canonical `time_window` when available
+      const itemTimeWindow = String(item?.time_window || item?.TimeWindow || item?.['Time Window'] || '').trim().toLowerCase();
+      if (itemTimeWindow) {
+        if (itemTimeWindow === 'offpeak' && !isOffPeakWindow) {
+          setError('Off-peak pass only available 6:00am-3:30pm (Manila time)');
           setBusy(false);
           return;
         }
-      }
-      if (isOffPeakItem) {
-        if (!isOffPeakWindow) {
-          setError('Off-peak pass only available 6am-3pm (Manila time)');
+        if ((itemTimeWindow === 'peak' || itemTimeWindow === 'daily') && !isPeakWindow) {
+          setError('Daily/Peak pass only available 3:00pm-11:59pm (Manila time)');
           setBusy(false);
           return;
+        }
+      } else {
+        // legacy name-based checks
+        if (isDailyItem && !isOffPeakItem) {
+          if (!isPeakWindow) {
+            setError('Daily pass only available 3:00pm-11:59pm (Manila time)');
+            setBusy(false);
+            return;
+          }
+        }
+        if (isOffPeakItem) {
+          if (!isOffPeakWindow) {
+            setError('Off-peak pass only available 6:00am-3:30pm (Manila time)');
+            setBusy(false);
+            return;
+          }
         }
       }
 

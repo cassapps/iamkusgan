@@ -100,7 +100,7 @@
   {
     "id": "daily_bundle",
     "name": "Daily Pass w/ Coach",
-    "price": 300.00,
+    "price": 250.00,
     "validity_days": 1,
     "is_gym_membership": true,
     "is_coach_subscription": true,
@@ -108,6 +108,18 @@
     "time_window": "daily",
     "discount": false,
     "notes": "Available only if no active Gym Membership OR Coach Subscription and during 15:00-21:59 Manila time"
+  },
+  {
+    "id": "daily_coach_offpeak",
+    "name": "Daily Coach Offpeak",
+    "price": 150.00,
+    "validity_days": 1,
+    "is_gym_membership": false,
+    "is_coach_subscription": true,
+    "category": "coach",
+    "time_window": "offpeak",
+    "discount": false,
+    "notes": "Available only from 06:00-15:59 Manila time and if no active Coach Subscription"
   },
   {
     "id": "monthly_bundle",

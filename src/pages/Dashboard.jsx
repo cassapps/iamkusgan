@@ -33,16 +33,29 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showLoadingToast, setShowLoadingToast] = useState(false);
   const [members, setMembers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
   const [gymEntries, setGymEntries] = useState([]);
   const [pricing, setPricing] = useState([]);
+  const [error, setError] = useState('');
+  const [serverPaymentsActive, setServerPaymentsActive] = useState(false);
   const [showAllGym, setShowAllGym] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [paymentsDateField, setPaymentsDateField] = useState('Any');
+  const getYesterdayYMD = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  };
+  const [paymentsDateFrom, setPaymentsDateFrom] = useState(getYesterdayYMD());
+  const [paymentsDateTo, setPaymentsDateTo] = useState(todayYMD());
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutMemberId, setCheckoutMemberId] = useState(null);
   const [checkoutInitialEntry, setCheckoutInitialEntry] = useState(null);
+  const API_BASE = import.meta.env.VITE_API_URL || '';
 
   // Generate gym entry rows (computed after state is declared to avoid TDZ)
   const gymEntryRows = useMemo(() => {
@@ -185,28 +198,62 @@ export default function Dashboard() {
 
     return { totalMembers: (membersArr || []).length, activeGym, activeCoach, visitedToday, coachToday, checkedIn, cashToday, gcashToday, totalPaymentsToday };
   };
-  // Generate payment rows
-  const paymentRows = useMemo(() => {
-    const today = todayYMD();
-    const candidates = (p) => p.Date || p.date || p.pay_date || p.created || p.timestamp || null;
+  // Generate payment rows (filtered by selected date field + range)
+  const [paymentRows, computedPaymentsTotal] = useMemo(() => {
     const parseTs = (v) => {
-      if (!v && v !== 0) return 0;
+      if (v === null || typeof v === 'undefined') return 0;
       if (typeof v === 'number') return v;
       try { if (v && typeof v.seconds === 'number') return v.seconds * 1000; } catch (e) {}
-      const parsed = Date.parse(String(v));
-      return isNaN(parsed) ? 0 : parsed;
+      try {
+        const s = String(v).trim();
+        // Handle common US-style date strings like MM/DD/YYYY by converting to ISO
+        const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const mm = String(m[1]).padStart(2, '0');
+          const dd = String(m[2]).padStart(2, '0');
+          const yyyy = m[3];
+          const iso = `${yyyy}-${mm}-${dd}T00:00:00`;
+          const p = Date.parse(iso);
+          if (!isNaN(p)) return p;
+        }
+        const parsed = Date.parse(s);
+        return isNaN(parsed) ? 0 : parsed;
+      } catch (e) { return 0; }
     };
-    const todays = (payments || []).filter(p => {
-      const d = candidates(p);
-      const ymd = d ? new Date(d).toLocaleDateString("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }) : "";
-      return ymd === today;
-    }).sort((a, b) => {
-      const ta = parseTs(candidates(a));
-      const tb = parseTs(candidates(b));
-      return (tb || 0) - (ta || 0);
-    });
 
-    return todays.map((p, idx) => {
+    const fieldCandidatesFor = (field) => {
+      if (!field) return ['Date','date','pay_date','created','timestamp','Timestamp'];
+      if (field === 'Date') return ['Date','date','pay_date'];
+      if (field === 'Created') return ['created','timestamp','Timestamp'];
+      if (field === 'Any') return ['Date','date','pay_date','created','timestamp','Timestamp'];
+      return [field];
+    };
+
+    const candidates = fieldCandidatesFor(paymentsDateField);
+
+    const parsePaymentDate = (p) => {
+      for (const k of candidates) {
+        if (Object.prototype.hasOwnProperty.call(p, k) && p[k] !== undefined && p[k] !== null) return p[k];
+      }
+      return p.Date || p.date || p.pay_date || p.created || p.timestamp || null;
+    };
+
+    const from = paymentsDateFrom ? new Date(paymentsDateFrom + 'T00:00:00') : null;
+    const to = paymentsDateTo ? new Date(paymentsDateTo + 'T23:59:59') : null;
+
+    const filtered = (payments || []).filter(p => {
+      const raw = parsePaymentDate(p);
+      if (!raw && raw !== 0) return false;
+      const ts = parseTs(raw);
+      if (!ts) return false;
+      const d = new Date(ts);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    }).sort((a, b) => parseTs(parsePaymentDate(b)) - parseTs(parsePaymentDate(a)));
+
+    let total = 0;
+    const rows = filtered.map((p, idx) => {
     const member = (members || []).find(m => {
       const pid = String(p.MemberID || p.member_id || p.id || p.member || "").trim();
       if (!pid) return false;
@@ -216,6 +263,8 @@ export default function Dashboard() {
     const coachValidRaw = p.coachvaliduntil || p.CoachValidUntil || p.coach_valid_until || p.coach_until || "";
     const gymValid = fmtDate(gymValidRaw);
     const coachValid = fmtDate(coachValidRaw);
+    const amt = parseFloat(p.Cost||p.amount||0) || 0;
+    total += amt;
     return (
       <tr key={idx}>
         <td>{displayName(member)}</td>
@@ -223,11 +272,16 @@ export default function Dashboard() {
         <td>{display(gymValid)}</td>
         <td>{display(coachValid)}</td>
         <td>{display(p.Mode || p.mode || p.method)}</td>
-        <td>{display((parseFloat(p.Cost||p.amount||0) || 0).toLocaleString())}</td>
+        <td>{display((amt || 0).toLocaleString())}</td>
       </tr>
     );
     });
-  }, [payments, members]);
+
+    return [rows, total];
+  }, [payments, members, paymentsDateField, paymentsDateFrom, paymentsDateTo]);
+
+  // keep local state up to date with computed payments total
+  useEffect(() => { setPaymentsTotal(computedPaymentsTotal || 0); }, [computedPaymentsTotal]);
  
 
   useEffect(() => {
@@ -243,14 +297,45 @@ export default function Dashboard() {
           // Still fetch full data for tables in background (non-blocking)
           (async () => {
             setIsRefreshing(true);
-            try {
-              const [membersRes, paymentsRes, gymRes, pricingRes] = await Promise.all([
-                fetchMembers(), fetchPayments(), fetchGymEntries(), fetchPricing()
-              ]);
-              setMembers(membersRes?.rows || membersRes?.data || []);
-              setPayments(paymentsRes?.rows || paymentsRes?.data || []);
-              setGymEntries(gymRes?.rows || gymRes?.data || []);
-              setPricing(pricingRes?.rows || pricingRes?.data || []);
+              try {
+                // Use allSettled so a single failing adapter (e.g., missing Firebase config)
+                // doesn't cancel loading other collections.
+                const settled = await Promise.allSettled([
+                  fetchMembers(), fetchPayments(), fetchGymEntries(), fetchPricing()
+                ]);
+                const membersRes = settled[0].status === 'fulfilled' ? settled[0].value : null;
+                const paymentsRes = settled[1].status === 'fulfilled' ? settled[1].value : null;
+                const gymRes = settled[2].status === 'fulfilled' ? settled[2].value : null;
+                const pricingRes = settled[3].status === 'fulfilled' ? settled[3].value : null;
+                // Accept both `{ rows: [...] }` shapes and plain array responses from the legacy proxy.
+                let membersArr = membersRes?.rows || membersRes || membersRes?.data || [];
+                let paymentsArr = paymentsRes?.rows || paymentsRes || paymentsRes?.data || [];
+                // If the firebase adapter rejected due to missing config, present a helpful message and
+                // attempt to fall back to server-side report endpoints.
+                if (!paymentsArr || paymentsArr.length === 0) {
+                  const paySettled = settled[1];
+                  if (paySettled && paySettled.status === 'rejected') {
+                    try {
+                      const msg = String(paySettled.reason || '');
+                      if (msg && msg.toLowerCase().includes('missing firebase config')) {
+                        console.warn('Firebase client not configured for this environment. Falling back to server reports.');
+                        setError('Firebase client not configured for this environment. Falling back to server reports.');
+                      }
+                    } catch (e) { /* ignore */ }
+                  }
+                }
+                let gymArr = gymRes?.rows || gymRes || gymRes?.data || [];
+                let pricingArr = pricingRes?.rows || pricingRes || pricingRes?.data || [];
+
+                // We rely on the Firestore adapter `fetchMembers`/`fetchPayments`/fetchGymEntries`.
+                // Do not attempt to call local /api endpoints as the live environment uses Firestore.
+
+                setMembers(membersArr);
+                if (!serverPaymentsActive) setPayments(paymentsArr);
+                setGymEntries(gymArr);
+                setPricing(pricingArr);
+
+                // Payments will be loaded from the Firestore adapter; we no longer call server report endpoints from the client.
               // Recompute authoritative stats from the freshly fetched rows so UI reflects actual data
               try {
                 const computed = computeStatsFromData(
@@ -281,10 +366,10 @@ export default function Dashboard() {
         fetchGymEntries(),
         fetchPricing(),
       ]);
-      const membersData = membersRes?.rows || membersRes?.data || [];
-      const paymentsData = paymentsRes?.rows || paymentsRes?.data || [];
-      const gymEntriesData = gymRes?.rows || gymRes?.data || [];
-      const pricingData = pricingRes?.rows || pricingRes?.data || [];
+      const membersData = membersRes?.rows || membersRes || membersRes?.data || [];
+      const paymentsData = paymentsRes?.rows || paymentsRes || paymentsRes?.data || [];
+      const gymEntriesData = gymRes?.rows || gymRes || gymRes?.data || [];
+      const pricingData = pricingRes?.rows || pricingRes || pricingRes?.data || [];
       setMembers(membersData);
       setPayments(paymentsData);
       setGymEntries(gymEntriesData);
@@ -429,6 +514,56 @@ export default function Dashboard() {
     return () => { unsub(); unsub2(); clearInterval(pollInterval); };
   }, []);
 
+  // Whenever the selected date range changes, fetch payments from Firestore via fetchPayments
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const report = await fetchPaymentsReport(paymentsDateFrom, paymentsDateTo);
+        if (!mounted) return;
+        const rows = report?.rows || report || [];
+        setPayments(rows || []);
+        setPaymentsTotal(Number(report?.total || report?.total_amount || ((rows || []).reduce((a, p) => a + (parseFloat(p.amount || p.Cost || 0) || 0), 0))) || 0);
+        setServerPaymentsActive(true);
+        setError('');
+      } catch (e) {
+        // fallback
+        try {
+          const resp = await fetchPayments();
+          if (!mounted) return;
+          const rows = resp?.rows || resp || [];
+          setPayments(rows || []);
+          setPaymentsTotal((rows || []).reduce((a, p) => a + (parseFloat(p.amount || p.Cost || 0) || 0), 0));
+          setServerPaymentsActive(false);
+          setError('');
+        } catch (e2) {
+          setError('Failed to load payments from server or Firebase: ' + String(e2?.message || e2));
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, [paymentsDateFrom, paymentsDateTo]);
+
+  // Fetch server-side payments report any time the selected date range changes
+  // We now rely on the Firestore adapter for payments. When run in production
+  // with Firebase configured, `fetchPayments()` will return the collection.
+  // Re-fetch `payments` whenever the date range or adapter change.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const resp = await fetchPayments();
+        if (!mounted) return;
+        const rows = resp?.rows || resp || [];
+        setPayments(rows || []);
+        setError('');
+      } catch (e) {
+        setError('Failed to load payments from Firebase: ' + String(e?.message || e));
+      }
+    })();
+    return () => { mounted = false; };
+  }, [paymentsDateFrom, paymentsDateTo]);
+
   // Recompute stats whenever key data changes so UI (checked-in count etc.) updates immediately
   useEffect(() => {
     try {
@@ -501,6 +636,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard-content">
       <h2 className="dashboard-title">Daily Dashboard <RefreshBadge show={isRefreshing && !loading} /></h2>
+      {error ? <div style={{ padding: 8, background: '#fff3cd', color: '#856404', border: '1px solid #ffeeba', borderRadius: 6, marginBottom: 12 }}>{error}</div> : null}
         <div className="dashboard-grid-3x3">
           {/* First row */}
           <div className="dashboard-card"><div className="dashboard-label">Total Members</div><div className="dashboard-value magenta">{stats.totalMembers}</div></div>
@@ -564,9 +700,22 @@ export default function Dashboard() {
             setCheckoutInitialEntry(null);
           }}
         />
-        {/* Payments Today Table */}
+        {/* Payments Table with date range */}
         <div style={{marginTop:24}} className="panel">
-          <div className="panel-header">Payments Today</div>
+          <div className="panel-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <div>Payments</div>
+              <div style={{display:'flex', gap:12, alignItems:'center'}}>
+              <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                <label style={{fontSize:12}}>From</label>
+                <input className="att-inline-select" style={{paddingRight:12}} type="date" value={paymentsDateFrom} onChange={(e) => setPaymentsDateFrom(e.target.value)} />
+              </div>
+              <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                <label style={{fontSize:12}}>To</label>
+                <input className="att-inline-select" style={{paddingRight:12}} type="date" value={paymentsDateTo} onChange={(e) => setPaymentsDateTo(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <div style={{padding:'8px 12px', fontWeight:600}}>SUM: ₱ {(paymentsTotal || 0).toLocaleString()}</div>
           <table className="aligned payments-table">
             <thead>
               <tr>
@@ -587,7 +736,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-        {loading && <div style={{marginTop:24}}>Loading…</div>}
+        {/* Loading indicator intentionally hidden to avoid persistent 'Loading…' text */}
       </div>
   );
 }

@@ -195,3 +195,17 @@ try {
 } catch (e) {
   console.warn('users seed error', e && e.message);
 }
+
+// Seed a local frontdesk user so development login is reliable without fallbacks
+try {
+  const f = db.prepare('SELECT COUNT(*) AS c FROM users WHERE username = ?').get('frontdesk');
+  if (!process.env.SKIP_DB_SEED && f.c === 0) {
+    const pw = 'Kusgan2025!';
+    const hash = bcrypt.hashSync(pw, 10);
+    const stmt = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)');
+    stmt.run('frontdesk', hash, 'staff', new Date().toISOString());
+    console.log('Seeded local frontdesk user: frontdesk');
+  }
+} catch (e) {
+  console.warn('frontdesk seed error', e && e.message);
+}

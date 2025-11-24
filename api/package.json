@@ -1,0 +1,9 @@
+{
+  "name": "kusgan-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  }
+}

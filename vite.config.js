@@ -11,15 +11,19 @@ export default defineConfig({
   server: {
     proxy: {
       // Proxy auth and API calls to local API server during development
-      '/auth': 'http://localhost:4000',
-      '/payments': 'http://localhost:4000',
-      '/attendance': 'http://localhost:4000',
-      '/members': 'http://localhost:4000',
-      '/products': 'http://localhost:4000',
-      // Proxy any /api/* requests and the upload endpoint to the API server
-      '/api': 'http://localhost:4000',
-      '/upload-photo': 'http://localhost:4000',
-      '/staff': 'http://localhost:4000'
+      '/auth': { target: 'http://localhost:4000', changeOrigin: true },
+      '/payments': { target: 'http://localhost:4000', changeOrigin: true },
+      '/attendance': { target: 'http://localhost:4000', changeOrigin: true },
+      '/members': { target: 'http://localhost:4000', changeOrigin: true },
+      '/products': { target: 'http://localhost:4000', changeOrigin: true },
+      // Proxy any /api/* requests and rewrite the path to remove the /api prefix
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/upload-photo': { target: 'http://localhost:4000', changeOrigin: true },
+      '/staff': { target: 'http://localhost:4000', changeOrigin: true }
     }
   }
 });

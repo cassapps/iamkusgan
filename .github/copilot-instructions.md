@@ -48,3 +48,10 @@ This file contains short, actionable guidance to help AI coding agents be produc
 - Ask for design/UX decisions before changing global navigation or page routes.
 
 If anything here is missing or too terse, tell me which area to expand (build, tests, GAS integration, or component patterns).
+
+## Hosting note (do not assume provider)
+- **Non-presumptive hosting:** Do not assume any particular hosting provider (Vercel, Netlify, Heroku, etc.). The project may be deployed as:
+	- a static frontend (GitHub Pages or similar) and a separate API host, or
+	- a combined serverless/API deployment (Functions, Cloud Run, VPS) that serves `/auth/login`.
+- When configuring the authentication server, provide either a Firebase Admin service account (via `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_APPLICATION_CREDENTIALS_JSON`, or `GOOGLE_APPLICATION_CREDENTIALS_JSON_B64`) or set the `ADMIN_USERNAME` and `ADMIN_PASSWORD` env variables. The app will prefer Firestore-backed users when Firebase Admin is configured.
+- Avoid making assumptions about deploy tools in patches or instructions — ask the operator which host they're using before giving provider-specific steps.
